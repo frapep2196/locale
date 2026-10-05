@@ -70,12 +70,14 @@ const FIREBASE_CONFIG = {
         allow create: if isMember() && request.resource.data.settled == false
           && (request.resource.data.uid == request.auth.uid || isAdmin());
         allow delete: if isAdmin()
-          || (isMember() && resource.data.uid == request.auth.uid && resource.data.settled == false);
+          || (isMember() && resource.data.uid == request.auth.uid && resource.data.settled == false
+              && resource.data.get('fee', false) == false);
         allow update: if isAdmin();
       }
       match /rounds/{id}      { allow read: if isMember(); allow write: if isAdmin(); }
       match /expenses/{id}    { allow read: if isMember(); allow write: if isAdmin(); }
       match /settlements/{id} { allow read: if isMember(); allow write: if isAdmin(); }
+      match /checks/{id}      { allow read, write: if isAdmin(); }
     }
   }
 -->
@@ -173,8 +175,7 @@ h2{font:600 21px/1.2 var(--cond);margin:24px 2px 8px}
 .actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:12px}
 
 /* segmenti */
-.seg{display:flex;gap:6px;overflow-x:auto;margin:0 -16px 14px;padding:2px 16px;scrollbar-width:none}
-.seg::-webkit-scrollbar{display:none}
+.seg{display:flex;flex-wrap:wrap;gap:6px;margin:0 0 14px}
 .seg button{flex:none;border:1px solid var(--line);background:var(--surface);border-radius:999px;padding:8px 14px;font-weight:500;min-height:40px}
 .seg button.on{background:var(--ink);border-color:var(--ink);color:var(--bg)}
 
@@ -191,8 +192,16 @@ h2{font:600 21px/1.2 var(--cond);margin:24px 2px 8px}
 .forwho{display:flex;align-items:center;gap:8px;margin-bottom:12px;font-size:14.5px;color:var(--muted)}
 .forwho select{flex:1;border:1px solid var(--line);background:var(--surface);border-radius:10px;padding:9px 10px;min-height:42px}
 .owe{display:flex;justify-content:space-between;align-items:center;background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:12px 14px;margin-bottom:12px}
+.owe small{display:block;font-size:13px;color:var(--muted)}
 .owe b{font:700 30px/1 var(--cond);font-variant-numeric:tabular-nums}
 .owe.has b{color:var(--red)}
+.recap{background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:10px 14px;margin:0 0 12px}
+.recap div{display:flex;justify-content:space-between;align-items:baseline;gap:12px;padding:5px 0}
+.recap dt{line-height:1.25}
+.recap dd{font:600 19px/1.1 var(--cond);font-variant-numeric:tabular-nums;white-space:nowrap}
+.recap dd.plus{color:var(--plus)}
+.recap dd.due{color:var(--red)}
+.recap .tot{border-top:1px solid var(--line);margin-top:6px;padding-top:10px;font-weight:600}
 .stats{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:12px}
 .stats .fact b{font-size:21px}
 
@@ -210,6 +219,10 @@ h2{font:600 21px/1.2 var(--cond);margin:24px 2px 8px}
 .form{display:flex;flex-direction:column;gap:12px}
 .form label{display:flex;flex-direction:column;gap:5px;font-size:14.5px;font-weight:500}
 .form input,.form select{border:1px solid var(--line);background:var(--surface);border-radius:11px;padding:11px 12px;min-height:46px;font-size:16px;width:100%}
+.cks{border:0;padding:0;margin:0;display:grid;grid-template-columns:1fr 1fr;gap:2px 12px}
+.cks legend{font-size:14.5px;font-weight:500;padding:0;margin-bottom:4px}
+.form label.ck{flex-direction:row;align-items:center;gap:10px;min-height:42px;font-size:16px;font-weight:400}
+.form .ck input{width:22px;height:22px;min-height:0;padding:0;flex:none;accent-color:var(--green)}
 .two{display:grid;grid-template-columns:1fr 1fr;gap:10px}
 .err{color:var(--red);font-size:14.5px;font-weight:500}
 .err:empty{display:none}
@@ -291,10 +304,11 @@ const slug = name => name.trim().toLowerCase().normalize('NFD').replace(/[\u0300
 
 /* ---------- stato ---------- */
 const S = {
-  screenErr:null, user:null, me:null, meLoaded:false, registering:false,
-  members:[], products:[], rounds:[], expenses:[], settlements:[], purchases:[], config:null,
+  screenErr:null, stage:'sdk', slow:false, dataErr:null, user:null, me:null, meLoaded:false, registering:false,
+  members:[], products:[], rounds:[], expenses:[], settlements:[], purchases:[], checks:[], checksErr:false, lastCheck:null, config:null,
   loaded:{}, tab:'cassa', bar:'prendi', buyFor:null, openRound:undefined, sheet:null
 };
+let slowTimer = null, dataRole = null;
 let DB, AUTH, unsubMe = null, unsubs = [], dataOn = false, curScreen = null, renderQueued = false, toastTimer = null, toastUndo = null;
 
 /* ---------- archivio di prova (solo su questo dispositivo) ---------- */
@@ -320,6 +334,12 @@ function seed(){
       p4:{name:'Caffè', cost:25, price:60, stock:28, active:true, ts:4},
       p5:{name:'Patatine', cost:45, price:100, stock:0, active:true, ts:5}
     },
+    checks:{
+      c1:{ts:now-7*D, by:'u1', missingPieces:3, missingValue:400, extraPieces:0, lines:[
+        {pid:'p1', name:'Acqua 0,5 L', expected:20, counted:20, diff:0, price:50, cost:20},
+        {pid:'p2', name:'Birra 33 cl', expected:15, counted:13, diff:-2, price:150, cost:85},
+        {pid:'p5', name:'Patatine', expected:3, counted:2, diff:-1, price:100, cost:45}]}
+    },
     settlements:{
       s1:{uid:'u2', name:'Marco', amount:950, cost:440, count:9, ts:now-6*D, by:'u1'},
       s2:{uid:'u3', name:'Luca', amount:600, cost:285, count:6, ts:now-5*D, by:'u1'}
@@ -339,7 +359,7 @@ function seed(){
   };
 }
 function makeLocalDB(){
-  const KEY = 'locale-prova-v1';
+  const KEY = 'locale-prova-v2';
   let data = null;
   try { data = JSON.parse(localStorage.getItem(KEY)); } catch(e){}
   if (!data || !data.members) data = seed();
@@ -421,23 +441,37 @@ function makeDemo(){
 }
 
 /* ---------- accesso e ascolto dei dati ---------- */
-function onErr(e){ console.error(e); if (e && e.code === 'permission-denied') return; toast(errText(e), {bad:true}); }
-function stopData(){ unsubs.forEach(u => u()); unsubs = []; dataOn = false; S.loaded = {}; }
+function onErr(e){
+  console.error(e); const c = (e && e.code) || 'errore';
+  if (c === 'permission-denied' && !(S.me && S.me.approved)) return;
+  S.dataErr = c; toast(errText(e), {bad:true}); queueRender();
+}
+function meErr(e){
+  console.error(e); const c = (e && e.code) || 'errore';
+  S.screenErr = c === 'permission-denied' ? 'Il database rifiuta l\'accesso (permission-denied). Di solito vuol dire che le regole in Firebase sono state cambiate o non sono pubblicate.'
+    : c === 'resource-exhausted' ? 'Il database ha raggiunto il limite gratuito di oggi (resource-exhausted). Riprende da solo domani.'
+    : 'Il database non risponde (' + c + ').';
+  queueRender();
+}
+function stopData(){ unsubs.forEach(u => u()); unsubs = []; dataOn = false; S.loaded = {}; S.dataErr = null; S.checks = []; S.checksErr = false; }
 function startData(){
   if (dataOn) return; dataOn = true;
   const L = (c, w) => unsubs.push(DB.listen(c, w, rows => { S[c] = rows; S.loaded[c] = true; queueRender(); }, onErr));
   L('members'); L('products'); L('rounds'); L('expenses'); L('settlements'); L('purchases', ['settled', false]);
   unsubs.push(DB.listenDoc('config', 'main', c => { S.config = c; queueRender(); }, onErr));
+  if (isAdmin()) unsubs.push(DB.listen('checks', null, rows => { S.checks = rows; S.checksErr = false; queueRender(); }, e => { console.error(e); S.checksErr = true; queueRender(); }));
 }
 function onUser(u){
   if (unsubMe){ unsubMe(); unsubMe = null; }
-  stopData();
-  S.user = u; S.me = null; S.meLoaded = false; S.buyFor = null; S.sheet = null; renderSheet();
+  stopData(); dataRole = null;
+  S.user = u; S.me = null; S.meLoaded = false; S.buyFor = null; S.sheet = null; S.screenErr = null; S.stage = u ? 'socio' : 'ok'; renderSheet();
   if (u) unsubMe = DB.listenDoc('members', u.uid, me => {
-    S.me = me; S.meLoaded = true;
-    if (me && me.approved) startData(); else stopData();
+    S.me = me; S.meLoaded = true; S.stage = 'ok';
+    const role = me && me.approved ? (me.role || 'member') : null;
+    if (role !== dataRole){ stopData(); dataRole = role; }
+    if (role) startData();
     queueRender();
-  }, onErr);
+  }, meErr);
   queueRender();
 }
 async function createMembership(uid, name){
@@ -458,6 +492,7 @@ function errText(e){
   if (c === 'auth/network-request-failed' || c === 'unavailable') return 'Manca la connessione a internet.';
   if (c === 'auth/operation-not-allowed') return 'In Firebase va attivato l\'accesso con email e password.';
   if (c === 'permission-denied') return 'Non hai i permessi per farlo.';
+  if (c === 'resource-exhausted') return 'Limite gratuito di oggi raggiunto. Riprende domani.';
   return 'Non è andata a buon fine. Riprova.';
 }
 
@@ -485,8 +520,19 @@ function totals(){
     quote, bar, spese, cassa: quote + bar - spese, daVersare,
     aperti: sum(S.purchases, lineTot),
     guadagno: sum(S.settlements, s => s.amount - (s.cost||0)),
-    scorte: sum(activeProducts(), p => Math.max(0, p.stock||0) * p.cost)
+    scorte: sum(activeProducts(), p => Math.max(0, p.stock||0) * p.cost),
+    speseBar: sum(S.expenses.filter(e => e.cat === 'bar'), e => e.amount),
+    daVendere: sum(activeProducts(), p => Math.max(0, p.stock||0) * p.price)
   };
+}
+function splitTotals(){
+  const open = S.checks.filter(c => !c.split && c.missingPieces);
+  return {open, v: sum(open, c => c.missingValue || 0), k: sum(open, c => sum(c.lines || [], l => Math.max(0, -l.diff) * (l.cost || 0)))};
+}
+function readSplit(d){
+  const t = splitTotals(), ids = approved().filter(m => d['m_' + m.id]).map(m => m.id), n = ids.length;
+  const total = d.mode === 'cost' ? t.k : t.v;
+  return {open:t.open, ids, total, share: n ? Math.ceil(total / n) : 0, costShare: n ? Math.round(t.k / n) : 0};
 }
 function movements(){
   const out = [];
@@ -513,8 +559,13 @@ function toast(msg, o){
 /* ---------- schermate d'ingresso ---------- */
 const gate = (title, text, buttons) => '<div class="gate"><h1>' + title + '</h1><p class="sub">' + text + '</p><div class="actions">' + (buttons||'') + '</div></div>';
 const SCR = {
-  boot: () => '<div class="gate"><p class="sub">Un attimo…</p></div>',
-  fail: () => gate('Non riesco a collegarmi', esc(S.screenErr || '') + ' Controlla la connessione e ricarica la pagina.', '<button class="btn primary" data-act="reload">Ricarica</button>'),
+  boot: () => {
+    if (!S.slow) return '<div class="gate"><p class="sub">Un attimo…</p></div>';
+    const st = S.registering ? 'registrazione' : S.stage;
+    const why = {sdk:'Non riesco a scaricare i componenti dell\'app.', accesso:'Non riesco a verificare il tuo accesso.', socio:'Sei entrato, ma il database non risponde.', registrazione:'La registrazione non si completa.'}[st] || 'Qualcosa non risponde.';
+    return gate('Ci sta mettendo troppo', why + ' Spesso è la connessione: prova a passare da Wi-Fi a dati del telefono, o viceversa, e ricarica. Punto in cui si ferma: ' + st + '.', '<button class="btn primary" data-act="reload">Ricarica</button>' + (S.user ? '<button class="btn" data-act="logout">Esci</button>' : ''));
+  },
+  fail: () => gate('Non riesco a collegarmi', esc(S.screenErr || ''), '<button class="btn primary" data-act="reload">Ricarica</button>' + (S.user ? '<button class="btn" data-act="logout">Esci</button>' : '')),
   auth: () => `
     <div class="gate">
       <h1>Il nostro locale</h1>
@@ -594,7 +645,7 @@ V.cassa = () => {
 const purchaseRow = (p, canDel) => `
   <li><div class="grow"><div class="t">${esc(p.pname)}</div><div class="s">${hour(p.ts)}</div></div>
   <span class="amt">${num(lineTot(p))}</span>
-  ${canDel ? `<button class="x" data-act="unbuy" data-id="${p.id}" data-confirm="✓" aria-label="Togli ${esc(p.pname)} dal conto">×</button>` : ''}</li>`;
+  ${canDel && (!p.fee || isAdmin()) ? `<button class="x" data-act="unbuy" data-id="${p.id}" data-confirm="✓" aria-label="Togli ${esc(p.pname)} dal conto">×</button>` : ''}</li>`;
 function purchaseList(items, canDel){
   let out = '', day = '';
   for (const p of items){
@@ -607,6 +658,7 @@ function purchaseList(items, canDel){
 
 V.bar = () => {
   const segs = [['prendi','Prendi'],['mio','Il mio conto'],['conti','Conti'],['listino','Listino']];
+  if (isAdmin()) segs.push(['controllo','Controllo']); else if (S.bar === 'controllo') S.bar = 'prendi';
   const head = '<div class="pagehead"><h1>Bar</h1></div><div class="seg">' + segs.map(s => `<button data-act="bar" data-bar="${s[0]}" class="${S.bar === s[0] ? 'on' : ''}">${s[1]}</button>`).join('') + '</div>';
   return head + BAR[S.bar]();
 };
@@ -635,12 +687,16 @@ BAR.conti = () => {
   const t = totals();
   const rows = approved().map(m => ({m, tot: owed(m.id), n: tabOf(m.id).length})).sort((a,b) => b.tot - a.tot);
   const last = [...S.settlements].sort((a,b) => b.ts - a.ts).slice(0, 12);
+  const miss = sum(S.checks, c => c.missingValue || 0);
   return `
-  <div class="stats">
-    <div class="fact"><span>Da incassare</span><b>${eur(t.aperti)}</b></div>
-    <div class="fact"><span>Guadagno finora</span><b>${eur(t.guadagno)}</b></div>
-    <div class="fact"><span>Scorte, al costo</span><b>${eur(t.scorte)}</b></div>
-  </div>
+  ${!isAdmin() ? '' : `<dl class="recap" aria-label="Riepilogo del bar">
+    <div><dt>Speso in rifornimenti</dt><dd>− ${num(t.speseBar)}</dd></div>
+    <div><dt>Già incassato</dt><dd class="plus">+ ${num(t.bar)}</dd></div>
+    <div><dt>Da incassare dai conti</dt><dd>${num(t.aperti)}</dd></div>
+    <div><dt>Ancora da vendere, al prezzo di vendita</dt><dd>${num(t.daVendere)}</dd></div>
+    <div class="tot"><dt>${t.bar + t.aperti + t.daVendere - t.speseBar >= 0 ? 'Guadagno se vendete tutto' : 'Perdita anche vendendo tutto'}</dt><dd class="${t.bar + t.aperti + t.daVendere - t.speseBar >= 0 ? 'plus' : 'due'}">${t.bar + t.aperti + t.daVendere - t.speseBar >= 0 ? '+' : '−'} ${num(Math.abs(t.bar + t.aperti + t.daVendere - t.speseBar))}</dd></div>
+  </dl>
+  <p class="hint" style="margin:-4px 2px 14px">${t.speseBar > t.bar ? 'Per rientrare di quanto speso mancano ' + eur(t.speseBar - t.bar) + ' di incassi.' : (t.speseBar ? 'La spesa è già rientrata: il bar è in attivo di ' + eur(t.bar - t.speseBar) + '.' : 'Registra un rifornimento dal Listino per vedere i conti del bar.')}${miss ? ' Ai controlli dello scaffale risulta sparita merce per ' + eur(miss) + '.' : ''} Questo riepilogo lo vedono solo gli admin.</p>`}
   <ul class="list">${rows.map(r => `
     <li><button class="rowbtn" data-act="sheet" data-sheet="tab" data-arg="${r.m.id}">
       <div class="grow"><div class="t">${esc(r.m.name)}</div><div class="s">${r.n ? r.n + (r.n === 1 ? ' consumazione' : ' consumazioni') : 'in pari'}</div></div>
@@ -650,6 +706,21 @@ BAR.conti = () => {
     <li>${isAdmin() ? `<button class="rowbtn" data-act="sheet" data-sheet="settlement" data-arg="${s.id}">` : ''}
       <div class="grow"><div class="t">${esc(nameOf(s.uid, s.name))}</div><div class="s">${dayShort(s.ts)}</div></div>
       <span class="amt plus">+ ${num(s.amount)}</span>${isAdmin() ? '</button>' : ''}</li>`).join('') + '</ul>' : ''}`;
+};
+BAR.controllo = () => {
+  if (S.checksErr) return '<p class="empty">Il controllo dello scaffale non è ancora attivo: vanno aggiornate le regole in Firebase (Firestore, scheda Regole) con il testo nuovo.</p>';
+  const list = [...S.checks].sort((a,b) => b.ts - a.ts);
+  const totV = sum(list, c => c.missingValue || 0), totP = sum(list, c => c.missingPieces || 0), openV = splitTotals().v;
+  return `
+  <p class="sub" style="margin:0 2px 12px">Conta i pezzi veri sullo scaffale. L'app li confronta con quelli che dovrebbero esserci e ti dice cosa è stato preso senza segnarlo.</p>
+  <div class="actions" style="margin:0 0 14px"><button class="btn primary" data-act="sheet" data-sheet="count">Conta lo scaffale</button>${openV ? '<button class="btn" data-act="sheet" data-sheet="split">Dividi tra i soci</button>' : ''}</div>
+  ${list.length ? `<div class="owe ${openV > 0 ? 'has' : ''}"><span>Merce sparita da dividere<small>In tutto finora ${eur(totV)}, ${totP} ${totP === 1 ? 'pezzo' : 'pezzi'} in ${list.length} ${list.length === 1 ? 'controllo' : 'controlli'}</small></span><b>${eur(openV)}</b></div>
+  <h2>Controlli fatti</h2><ul class="list">${list.map(c => `
+    <li><button class="rowbtn" data-act="sheet" data-sheet="check" data-arg="${c.id}">
+      <div class="grow"><div class="t">${dayLong(c.ts)}</div><div class="s">${c.missingPieces ? (c.missingPieces === 1 ? 'Mancava 1 pezzo' : 'Mancavano ' + c.missingPieces + ' pezzi') : 'Tutto tornava'}${c.extraPieces ? ', ' + c.extraPieces + ' in più' : ''} ${c.split ? '<span class="tag">divisa tra i soci</span>' : ''}</div></div>
+      <span class="amt ${c.missingValue ? 'due' : 'plus'}">${c.missingValue ? '− ' + num(c.missingValue) : 'ok'}</span></button></li>`).join('')}</ul>`
+  : '<p class="empty">Nessun controllo fatto. Il primo conviene farlo subito, così parti con le scorte giuste.</p>'}
+  <p class="hint" style="margin-top:12px">L'app non può dirti chi è stato. Più spesso conti, per esempio a fine serata, più è facile capire quando è successo e chi c'era. Questa pagina la vedono solo gli admin.</p>`;
 };
 BAR.listino = () => {
   const all = [...S.products].sort((a,b) => (a.ts||0) - (b.ts||0)), adm = isAdmin();
@@ -785,6 +856,43 @@ SH.restock = () => {
     <button class="btn primary wide">Registra rifornimento</button>
   </form>`;
 };
+SH.count = () => {
+  const ps = activeProducts();
+  if (!ps.length) return closeX + '<h2>Conta lo scaffale</h2><p class="empty">Prima aggiungi almeno un prodotto al listino.</p>';
+  return `${closeX}<h2>Conta lo scaffale</h2><p class="sub">Scrivi quanti pezzi vedi davvero. Lascia vuoto quello che non hai contato.</p>
+  <form class="form" data-form="count">
+    <div class="rs-head"><span>Prodotto</span><span>Dovrebbero</span><span>Contati</span></div>
+    ${ps.map(p => `<div class="rs"><span>${esc(p.name)}</span><span class="num">${p.stock || 0}</span>
+      <input name="n_${p.id}" inputmode="numeric" placeholder="?" aria-label="Pezzi contati di ${esc(p.name)}"></div>`).join('')}
+    <p class="hint">Dopo il confronto la scorta viene allineata a quello che hai contato.</p>
+    <p class="err" role="alert"></p>
+    <button class="btn primary wide">Confronta</button>
+  </form>`;
+};
+SH.split = () => {
+  const t = splitTotals(), ms = approved();
+  if (!t.v) return closeX + '<h2>Dividi la merce sparita</h2><p class="empty">Non c\'è niente da dividere.</p>';
+  return `${closeX}<h2>Dividi la merce sparita</h2><p class="sub">La quota finisce sul conto del bar di ogni socio scelto, che la paga insieme alle sue consumazioni. Solo un admin può toglierla.</p>
+  <form class="form" data-form="split">
+    <label>Quanto dividere<select name="mode"><option value="price">Al prezzo di vendita: ${eur(t.v)}</option><option value="cost">Solo quello che vi è costata: ${eur(t.k)}</option></select></label>
+    <fieldset class="cks"><legend>Tra chi</legend>${ms.map(m => `<label class="ck"><input type="checkbox" name="m_${m.id}" checked><span>${esc(m.name)}</span></label>`).join('')}</fieldset>
+    <p class="total"><span>A testa</span><b id="sp-share">${eur(ms.length ? Math.ceil(t.v / ms.length) : 0)}</b></p>
+    <p class="err" role="alert"></p>
+    <button class="btn primary wide">Dividi tra i soci</button>
+  </form>`;
+};
+SH.check = id => {
+  const c = S.checks.find(x => x.id === id) || (S.lastCheck && S.lastCheck.id === id ? S.lastCheck : null);
+  if (!c) return closeX + '<h2>Controllo</h2><p class="empty">Questo controllo non c\'è più.</p>';
+  return `${closeX}<h2>${c.missingPieces ? (c.missingPieces === 1 ? 'Manca 1 pezzo' : 'Mancano ' + c.missingPieces + ' pezzi') : 'Tutto torna'}</h2>
+  <p class="sub">Controllo di ${dayLong(c.ts)}, ore ${hour(c.ts)}.${c.missingValue ? ' Mancato incasso: ' + eur(c.missingValue) + '.' : ''}</p>
+  <ul class="list">${(c.lines || []).map(l => `
+    <li><div class="grow"><div class="t">${esc(l.name)}</div><div class="s">Dovevano essere ${l.expected}, contati ${l.counted}</div></div>
+    <span class="amt ${l.diff < 0 ? 'due' : l.diff > 0 ? '' : 'plus'}">${l.diff < 0 ? '− ' + (-l.diff) + ' pz, ' + num(-l.diff * l.price) : l.diff > 0 ? '+ ' + l.diff + ' pz' : 'ok'}</span></li>`).join('')}</ul>
+  ${c.extraPieces ? '<p class="hint" style="margin-top:10px">Pezzi in più: di solito è un rifornimento non registrato, o qualcosa segnato due volte.</p>' : ''}
+  <div class="actions"><button class="btn danger wide" data-act="delcheck" data-id="${c.id}" data-confirm="Conferma: elimina controllo">Elimina questo controllo</button></div>
+  <p class="hint" style="margin-top:8px">Eliminandolo le scorte restano come le hai contate.</p>`;
+};
 SH.tab = uid => {
   const items = tabOf(uid), tot = owed(uid), adm = isAdmin();
   return `${closeX}<h2>Conto di ${esc(nameOf(uid))}</h2><p class="sub">${items.length ? 'Da pagare ' + eur(tot) : 'In pari, niente da pagare.'}</p>
@@ -828,7 +936,7 @@ SH.club = () => `${closeX}<h2>Nome del locale</h2>
     <button class="btn primary wide">Salva nome</button>
   </form>`;
 
-const LIVE = {tab:1, settlement:1, member:1};
+const LIVE = {tab:1, settlement:1, member:1, check:1};
 function openSheet(name, arg){ $('#toast').hidden = true; toastUndo = null; S.sheet = {name, arg}; renderSheet(); const f = $('#sheet input:not([type=hidden]), #sheet select'); if (f && !LIVE[name] && window.matchMedia('(min-width: 700px)').matches) f.focus(); }
 function closeSheet(){ S.sheet = null; renderSheet(); }
 function renderSheet(){
@@ -842,6 +950,8 @@ function renderSheet(){
 function queueRender(){ if (renderQueued) return; renderQueued = true; setTimeout(() => { renderQueued = false; render(); }, 0); }
 function render(){
   const root = $('#root'), scr = screenName();
+  if (scr === 'boot'){ if (!slowTimer && !S.slow) slowTimer = setTimeout(() => { slowTimer = null; S.slow = true; render(); }, 12000); }
+  else { clearTimeout(slowTimer); slowTimer = null; S.slow = false; }
   if (scr !== 'app'){
     if (scr === curScreen && scr === 'auth') return;
     curScreen = scr; root.innerHTML = SCR[scr](); return;
@@ -851,7 +961,7 @@ function render(){
   const club = (S.config || {}).clubName || 'Il nostro locale';
   document.title = club;
   root.innerHTML = `<header class="top"><span class="club">${esc(club)}</span><span class="who">${esc(S.me.name)}</span></header>`
-    + demoBar() + '<main>' + (ready ? V[S.tab]() : '<p class="empty">Carico i dati…</p>') + '</main>' + nav();
+    + demoBar() + '<main>' + (ready ? V[S.tab]() : S.dataErr ? '<p class="empty">Non riesco a leggere i dati (' + esc(S.dataErr) + ').</p><div class="actions"><button class="btn primary" data-act="reload">Ricarica</button></div>' : '<p class="empty">Carico i dati…</p>') + '</main>' + nav();
   if (S.sheet && LIVE[S.sheet.name]) renderSheet();
 }
 
@@ -911,6 +1021,7 @@ const A = {
     toast(was ? 'Versamento tolto a ' + nameOf(d.uid) : 'Versata: ' + eur(r.amount) + ' da ' + nameOf(d.uid));
   },
   delround(d){ commit([{t:'delete', c:'rounds', id:d.id}]); S.openRound = undefined; toast('Quota eliminata'); },
+  delcheck(d){ commit([{t:'delete', c:'checks', id:d.id}]); closeSheet(); toast('Controllo eliminato'); },
   delexpense(d){ commit([{t:'delete', c:'expenses', id:d.id}]); closeSheet(); toast('Spesa eliminata'); },
   toggleproduct(d){ const p = S.products.find(x => x.id === d.id); if (!p) return; commit([{t:'update', c:'products', id:p.id, d:{active: p.active === false}}]); closeSheet(); toast(p.active === false ? 'Rimesso in listino' : 'Tolto dal listino'); },
   approve(d){ commit([{t:'update', c:'members', id:d.uid, d:{approved:true, removed:false}}]); toast('Approvato: ' + nameOf(d.uid)); },
@@ -923,7 +1034,10 @@ const A = {
 };
 function removePurchase(id){
   const p = S.purchases.find(x => x.id === id); if (!p) return;
-  commit([{t:'delete', c:'purchases', id}, {t:'update', c:'products', id:p.pid, d:{stock:DB.inc(p.qty||1)}}]);
+  if (p.fee && !isAdmin()) return;
+  const ops = [{t:'delete', c:'purchases', id}];
+  if (p.pid) ops.push({t:'update', c:'products', id:p.pid, d:{stock:DB.inc(p.qty||1)}});
+  commit(ops);
   toast('Tolto dal conto: ' + p.pname);
 }
 
@@ -983,6 +1097,33 @@ const F = {
     ops.push({t:'set', c:'expenses', id:DB.newId('expenses'), d:{desc:'Rifornimento bar: ' + r.lines.map(l => l.q + ' ' + l.p.name).join(', '), amount:r.total, date:d.date, cat:'bar', ts:Date.now(), by:S.user.uid}});
     commit(ops); closeSheet(); toast('Rifornimento registrato: ' + eur(r.total));
   },
+  count(d, f){
+    const lines = [];
+    for (const p of activeProducts()){
+      const v = String(d['n_' + p.id] || '').trim(); if (v === '') continue;
+      const n = Number(v);
+      if (!Number.isInteger(n) || n < 0) return ferr(f, 'Controlla il numero di ' + p.name + '.');
+      const exp = p.stock || 0;
+      lines.push({pid:p.id, name:p.name, expected:exp, counted:n, diff:n - exp, price:p.price, cost:p.cost});
+    }
+    if (!lines.length) return ferr(f, 'Scrivi i pezzi contati di almeno un prodotto.');
+    const id = DB.newId('checks');
+    const check = {ts:Date.now(), by:S.user.uid, lines,
+      missingPieces: sum(lines, l => Math.max(0, -l.diff)), missingValue: sum(lines, l => Math.max(0, -l.diff) * l.price), extraPieces: sum(lines, l => Math.max(0, l.diff))};
+    const ops = [{t:'set', c:'checks', id, d:check}];
+    for (const l of lines) if (l.diff) ops.push({t:'update', c:'products', id:l.pid, d:{stock:DB.inc(l.diff)}});
+    S.lastCheck = Object.assign({id}, check);
+    commit(ops); S.bar = 'controllo'; render(); openSheet('check', id);
+  },
+  split(d, f){
+    const r = readSplit(d);
+    if (!r.total) return ferr(f, 'Non c\'è niente da dividere.');
+    if (!r.ids.length) return ferr(f, 'Scegli almeno un socio.');
+    const now = Date.now(), ops = [];
+    for (const uid of r.ids) ops.push({t:'set', c:'purchases', id:DB.newId('purchases'), d:{uid, name:nameOf(uid), pid:'', fee:true, pname:'Merce sparita, quota', price:r.share, cost:Math.min(r.share, r.costShare), qty:1, ts:now, settled:false, by:S.user.uid}});
+    for (const c of r.open) ops.push({t:'update', c:'checks', id:c.id, d:{split:true, splitTs:now}});
+    commit(ops); closeSheet(); toast('Divisa: ' + eur(r.share) + ' a testa tra ' + r.ids.length + (r.ids.length === 1 ? ' socio' : ' soci'));
+  },
   merge(d, f){
     const neu = member(d.uid), old = member(d.old);
     if (!neu || !old) return ferr(f, 'Scegli il vecchio socio.');
@@ -1034,6 +1175,10 @@ document.addEventListener('input', e => {
   const f = e.target.closest('form[data-form=restock]'); if (!f) return;
   $('#rs-total').textContent = eur(readRestock(Object.fromEntries(new FormData(f))).total);
 });
+document.addEventListener('change', e => {
+  const f = e.target.closest('form[data-form=split]'); if (!f) return;
+  $('#sp-share').textContent = eur(readSplit(Object.fromEntries(new FormData(f))).share);
+});
 document.addEventListener('keydown', e => { if (e.key === 'Escape' && S.sheet) closeSheet(); });
 
 /* ---------- avvio ---------- */
@@ -1046,8 +1191,9 @@ async function boot(){
       await Promise.all([loadScript(SDK + 'firebase-auth-compat.js'), loadScript(SDK + 'firebase-firestore-compat.js')]);
       makeFirebase();
     }
+    S.stage = 'accesso';
     AUTH.onChange(u => { S.authReady = true; onUser(u); });
-  } catch(e){ console.error(e); S.screenErr = 'L\'app non è partita.'; render(); }
+  } catch(e){ console.error(e); S.screenErr = 'L\'app non è partita: ' + ((e && e.message) || 'errore') + '. Controlla la connessione e ricarica la pagina.'; render(); }
 }
 boot();
 })();
