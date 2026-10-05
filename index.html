@@ -464,6 +464,7 @@ function errText(e){
 /* ---------- conti ---------- */
 const isAdmin = () => !!(S.me && S.me.role === 'admin');
 const approved = () => S.members.filter(m => m.approved).sort(byName);
+const quotaMembers = () => approved().filter(m => !m.exempt);
 const pending = () => S.members.filter(m => !m.approved && !m.removed).sort(byName);
 const member = uid => S.members.find(m => m.id === uid);
 const nameOf = (uid, fallback) => (member(uid)||{}).name || fallback || 'Ex socio';
@@ -472,7 +473,7 @@ const tabOf = uid => S.purchases.filter(p => p.uid === uid).sort((a,b) => b.ts -
 const lineTot = p => p.price * (p.qty||1);
 const owed = uid => sum(tabOf(uid), lineTot);
 function totals(){
-  const act = approved();
+  const act = quotaMembers();
   let quote = 0, daVersare = 0;
   for (const r of S.rounds){
     const paid = r.paid || {};
@@ -663,7 +664,7 @@ BAR.listino = () => {
 };
 
 V.quote = () => {
-  const t = totals(), act = approved(), adm = isAdmin();
+  const t = totals(), act = quotaMembers(), adm = isAdmin(), exempt = approved().filter(m => m.exempt);
   const rounds = [...S.rounds].sort((a,b) => b.ts - a.ts);
   const open = S.openRound === undefined ? (rounds[0] || {}).id : S.openRound;
   return `
@@ -683,10 +684,10 @@ V.quote = () => {
         ${paid[m.id]
           ? (adm ? `<button class="btn small" data-act="togglepaid" data-id="${r.id}" data-uid="${m.id}" data-confirm="Togli il versamento">Versata ✓</button>` : '<span class="tag">Versata</span>')
           : (adm ? `<button class="btn small primary" data-act="togglepaid" data-id="${r.id}" data-uid="${m.id}">Segna versata</button>` : `<span class="amt due">${num(r.amount)}</span>`)}
-        </li>`).join('') + ex.map(uid => `<li><div class="grow"><div class="t">${esc(nameOf(uid))}</div><div class="s">Versata il ${dayShort(paid[uid])}, non è più socio</div></div><span class="tag">Versata</span></li>`).join('') + '</ul>'
+        </li>`).join('') + ex.map(uid => `<li><div class="grow"><div class="t">${esc(nameOf(uid))}</div><div class="s">Versata il ${dayShort(paid[uid])}, ${(member(uid)||{}).approved ? 'ora è esente' : 'non è più socio'}</div></div><span class="tag">Versata</span></li>`).join('') + '</ul>'
         + (adm ? `<div class="actions" style="margin:10px 14px 12px"><button class="btn small danger" data-act="delround" data-id="${r.id}" data-confirm="Conferma: elimina quota e versamenti">Elimina questa quota</button></div>` : '') : ''}
     </section>`;
-  }).join('') : `<p class="empty">Nessuna quota. ${adm ? 'Crea la prima con "Nuova quota", per esempio la quota di ingresso da 150 €.' : 'Le quote le crea un admin.'}</p>`}`;
+  }).join('') + (exempt.length ? `<p class="hint" style="margin-top:12px">Non ${exempt.length === 1 ? 'versa' : 'versano'} le quote: ${exempt.map(m => esc(m.name)).join(', ')}.</p>` : '') : `<p class="empty">Nessuna quota. ${adm ? 'Crea la prima con "Nuova quota", per esempio la quota di ingresso da 150 €.' : 'Le quote le crea un admin.'}</p>`}`;
 };
 
 V.spese = () => {
@@ -720,7 +721,7 @@ V.soci = () => {
   <ul class="list">${act.map(m => `
     <li>${adm ? `<button class="rowbtn" data-act="sheet" data-sheet="member" data-arg="${m.id}">` : ''}
       <div class="grow"><div class="t">${esc(m.name)}${m.id === S.user.uid ? ' (tu)' : ''}</div></div>
-      ${m.role === 'admin' ? '<span class="tag">admin</span>' : ''}${adm ? '</button>' : ''}</li>`).join('')}</ul>
+      ${m.exempt ? '<span class="tag warn">non versa quote</span>' : ''}${m.role === 'admin' ? '<span class="tag">admin</span>' : ''}${adm ? '</button>' : ''}</li>`).join('')}</ul>
   ${adm ? `<p class="hint" style="margin-top:10px">Gli admin segnano quote, spese e pagamenti del bar. Conviene essere almeno in due.</p>
     <div class="actions"><button class="btn" data-act="sheet" data-sheet="club">Cambia nome del locale</button>${DEMO ? '<button class="btn danger" data-act="resetdemo" data-confirm="Conferma: ricomincia">Ricomincia la prova</button>' : ''}</div>` : ''}
   ${adm && ex.length ? '<h2>Ex soci</h2><ul class="list">' + ex.sort(byName).map(m => `<li><div class="grow"><div class="t">${esc(m.name)}</div></div><button class="btn small" data-act="readmit" data-uid="${m.id}">Riammetti</button></li>`).join('') + '</ul>' : ''}`;
@@ -800,8 +801,9 @@ SH.settlement = id => {
 SH.member = uid => {
   const m = member(uid); if (!m) return closeX + '<h2>Socio</h2>';
   const admins = approved().filter(x => x.role === 'admin').length, lastAdmin = m.role === 'admin' && admins <= 1, due = owed(uid);
-  return `${closeX}<h2>${esc(m.name)}</h2><p class="sub">${m.role === 'admin' ? 'Admin' : 'Socio'}${due ? ', conto del bar ' + eur(due) : ''}</p>
+  return `${closeX}<h2>${esc(m.name)}</h2><p class="sub">${m.role === 'admin' ? 'Admin' : 'Socio'}${m.exempt ? ', non versa le quote' : ''}${due ? ', conto del bar ' + eur(due) : ''}</p>
   <div class="form">
+    <button class="btn wide" data-act="exempt" data-uid="${uid}">${m.exempt ? 'Rimetti nelle quote' : 'Non deve versare le quote'}</button>
     ${m.role === 'admin'
       ? (lastAdmin ? '<p class="hint">È l\'unico admin: nominane un altro prima di toglierlo.</p>' : `<button class="btn wide" data-act="role" data-uid="${uid}" data-role="member">Togli da admin</button>`)
       : `<button class="btn wide" data-act="role" data-uid="${uid}" data-role="admin">Nomina admin</button>`}
@@ -915,6 +917,7 @@ const A = {
   reject(d){ commit([{t:'delete', c:'members', id:d.uid}]); toast('Richiesta rifiutata'); },
   readmit(d){ commit([{t:'update', c:'members', id:d.uid, d:{approved:true, removed:false}}]); toast('Riammesso: ' + nameOf(d.uid)); },
   role(d){ commit([{t:'update', c:'members', id:d.uid, d:{role:d.role}}]); closeSheet(); toast(d.role === 'admin' ? nameOf(d.uid) + ' ora è admin' : nameOf(d.uid) + ' non è più admin'); },
+  exempt(d){ const m = member(d.uid); if (!m) return; commit([{t:'update', c:'members', id:m.id, d:{exempt: !m.exempt}}]); closeSheet(); toast(m.exempt ? m.name + ' torna nelle quote' : m.name + ' non versa le quote'); },
   remove(d){ const n = nameOf(d.uid); commit([{t:'update', c:'members', id:d.uid, d:{approved:false, removed:true, role:'member'}}]); closeSheet(); toast('Tolto dal locale: ' + n); },
   resetdemo(){ DB.reset(); S.tab = 'cassa'; AUTH.switchTo('u1'); toast('Prova ricominciata'); }
 };
@@ -985,7 +988,7 @@ const F = {
     if (!neu || !old) return ferr(f, 'Scegli il vecchio socio.');
     const ops = tabOf(old.id).slice(0, 400).map(p => ({t:'update', c:'purchases', id:p.id, d:{uid:neu.id, name:neu.name}}));
     for (const r of S.rounds) if (r.paid && r.paid[old.id]) ops.push({t:'update', c:'rounds', id:r.id, d:{['paid.' + neu.id]: r.paid[old.id], ['paid.' + old.id]: DB.del()}});
-    ops.push({t:'update', c:'members', id:neu.id, d:{approved:true, removed:false, role:old.role}});
+    ops.push({t:'update', c:'members', id:neu.id, d:{approved:true, removed:false, role:old.role, exempt:!!old.exempt}});
     ops.push({t:'delete', c:'members', id:old.id});
     commit(ops); closeSheet(); toast('Collegato: ' + neu.name + ' prende il posto di ' + old.name);
   },
