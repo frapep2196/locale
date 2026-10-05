@@ -1,0 +1,1053 @@
+<!doctype html>
+<html lang="it">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#15503E">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Locale">
+<title>Il nostro locale</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ctext y='.9em' font-size='90'%3E%E2%9A%BD%3C/text%3E%3C/svg%3E">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Barlow:wght@400;500;600&family=Barlow+Condensed:wght@500;600;700&display=swap" rel="stylesheet">
+
+<script>
+/* ======================================================================
+   COLLEGAMENTO A FIREBASE
+   Finché questi campi sono vuoti l'app funziona in "versione di prova":
+   i dati restano solo sul dispositivo e non sono condivisi.
+   Quando crei il progetto Firebase, incolla qui i valori che ti dà.
+   ====================================================================== */
+const FIREBASE_CONFIG = {
+  apiKey: "AIzaSyCvk-SaFz8ugtR1QVgYb0zH1B6QgSebIvI",
+  authDomain: "locale-41bc7.firebaseapp.com",
+  projectId: "locale-41bc7",
+  storageBucket: "locale-41bc7.firebasestorage.app",
+  messagingSenderId: "407038988244",
+  appId: "1:407038988244:web:7dbbbf20fccb2c82565041"
+};
+</script>
+
+<!--
+  REGOLE DI SICUREZZA DA INCOLLARE IN FIREBASE (Firestore Database > Regole)
+
+  rules_version = '2';
+  service cloud.firestore {
+    match /databases/{database}/documents {
+      function signedIn() { return request.auth != null; }
+      function myDoc() { return get(/databases/$(database)/documents/members/$(request.auth.uid)).data; }
+      function isMember() {
+        return signedIn()
+          && exists(/databases/$(database)/documents/members/$(request.auth.uid))
+          && myDoc().approved == true;
+      }
+      function isAdmin() { return isMember() && myDoc().role == 'admin'; }
+      function isFounder() {
+        return get(/databases/$(database)/documents/config/main).data.founder == request.auth.uid;
+      }
+
+      match /config/main {
+        allow read: if signedIn();
+        allow create: if signedIn() && request.resource.data.founder == request.auth.uid;
+        allow update: if isAdmin() && request.resource.data.founder == resource.data.founder;
+      }
+      match /members/{uid} {
+        allow read: if signedIn() && (request.auth.uid == uid || isMember());
+        allow create: if signedIn() && request.auth.uid == uid
+          && ((request.resource.data.approved == false && request.resource.data.role == 'member') || isFounder());
+        allow update, delete: if isAdmin();
+      }
+      match /products/{id} {
+        allow read: if isMember();
+        allow create, delete: if isAdmin();
+        allow update: if isAdmin()
+          || (isMember() && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['stock']));
+      }
+      match /purchases/{id} {
+        allow read: if isMember();
+        allow create: if isMember() && request.resource.data.settled == false
+          && (request.resource.data.uid == request.auth.uid || isAdmin());
+        allow delete: if isAdmin()
+          || (isMember() && resource.data.uid == request.auth.uid && resource.data.settled == false);
+        allow update: if isAdmin();
+      }
+      match /rounds/{id}      { allow read: if isMember(); allow write: if isAdmin(); }
+      match /expenses/{id}    { allow read: if isMember(); allow write: if isAdmin(); }
+      match /settlements/{id} { allow read: if isMember(); allow write: if isAdmin(); }
+    }
+  }
+-->
+
+<style>
+:root{
+  --bg:#F2F5F1; --surface:#FFFFFF; --ink:#14201B; --muted:#5B6A63; --line:#D9E1DB;
+  --green:#15503E; --green-ink:#F3F8F4; --green-soft:#E2EEE7; --on-soft:#15503E;
+  --amber:#F2B330; --amber-ink:#33250A;
+  --red:#B93526; --plus:#18744A;
+  --cond:'Barlow Condensed','Arial Narrow','Roboto Condensed','Helvetica Neue',sans-serif;
+  --body:'Barlow',system-ui,-apple-system,'Segoe UI',Roboto,sans-serif;
+}
+@media (prefers-color-scheme: dark){
+  :root{
+    --bg:#0D1613; --surface:#15221D; --ink:#E7EEE9; --muted:#93A39B; --line:#25372F;
+    --green:#1B6A52; --green-ink:#F3F8F4; --green-soft:#1A2E27; --on-soft:#8FD9B8;
+    --amber:#F2B330; --amber-ink:#33250A;
+    --red:#F0806F; --plus:#62CF9A;
+  }
+}
+*{box-sizing:border-box}
+html{-webkit-text-size-adjust:100%}
+body{margin:0;background:var(--bg);color:var(--ink);font:400 16px/1.45 var(--body);-webkit-tap-highlight-color:transparent}
+button,input,select{font:inherit;color:inherit}
+button{cursor:pointer}
+h1,h2,p,ul,dl,dd{margin:0}
+ul{padding:0;list-style:none}
+a{color:inherit}
+:focus-visible{outline:3px solid var(--amber);outline-offset:2px}
+[hidden]{display:none!important}
+
+#root{max-width:560px;margin:0 auto;min-height:100dvh;padding:env(safe-area-inset-top,0) 16px calc(92px + env(safe-area-inset-bottom,0px))}
+.cond{font-family:var(--cond)}
+.num{font-variant-numeric:tabular-nums}
+
+/* testata */
+.top{display:flex;justify-content:space-between;align-items:baseline;gap:12px;padding:18px 2px 12px}
+.club{font:600 27px/1.1 var(--cond);letter-spacing:.005em}
+.who{font-size:14px;color:var(--muted);white-space:nowrap}
+.demo{background:var(--amber);color:var(--amber-ink);border-radius:12px;padding:10px 12px;margin-bottom:14px;font-size:14px;display:flex;gap:10px;align-items:center;justify-content:space-between;flex-wrap:wrap}
+.demo select{background:rgba(255,255,255,.55);border:0;border-radius:8px;padding:6px 8px;font-weight:600;color:var(--amber-ink)}
+
+/* cassa */
+.till{position:relative;overflow:hidden;background:var(--green);color:var(--green-ink);border-radius:22px;padding:20px 20px 14px}
+.till::before{content:"";position:absolute;right:-74px;top:50%;width:190px;height:190px;margin-top:-95px;border:2px solid currentColor;border-radius:50%;opacity:.13}
+.till::after{content:"";position:absolute;right:20px;top:0;bottom:0;border-left:2px solid currentColor;opacity:.13}
+.till > *{position:relative;z-index:1}
+.till-label{font-size:15px;font-weight:500;opacity:.85}
+.till-num{font:700 clamp(58px,19vw,88px)/.98 var(--cond);letter-spacing:-.01em;margin:2px 0 14px;font-variant-numeric:tabular-nums}
+.sum{border-top:1px solid rgba(255,255,255,.24);padding-top:8px}
+.sum div{display:flex;justify-content:space-between;padding:3px 0;font-size:15px}
+.sum dd{font-variant-numeric:tabular-nums;font-weight:500}
+
+.facts{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:10px}
+.fact{background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:11px 12px;text-align:left;display:flex;flex-direction:column;gap:2px}
+.fact span{font-size:13.5px;color:var(--muted);line-height:1.25}
+.fact b{font:600 24px/1.1 var(--cond);font-variant-numeric:tabular-nums}
+.mine{width:100%;margin-top:10px;background:var(--amber);color:var(--amber-ink);border:0;border-radius:14px;padding:12px 14px;display:flex;justify-content:space-between;align-items:center;font-weight:500}
+.mine b{font:700 26px/1 var(--cond);font-variant-numeric:tabular-nums}
+
+h2{font:600 21px/1.2 var(--cond);margin:24px 2px 8px}
+.pagehead{display:flex;justify-content:space-between;align-items:flex-end;gap:12px;margin:2px 2px 14px}
+.pagehead h1{font:600 34px/1 var(--cond)}
+.sub{color:var(--muted);font-size:14.5px;margin-top:4px}
+
+/* liste */
+.list{background:var(--surface);border:1px solid var(--line);border-radius:14px;overflow:hidden}
+.list > li{display:flex;align-items:center;gap:12px;padding:11px 14px;border-top:1px solid var(--line);min-height:52px}
+.list > li:first-child{border-top:0}
+.list .grow{flex:1;min-width:0}
+.list .t{font-weight:500;overflow-wrap:anywhere}
+.list .s{font-size:13.5px;color:var(--muted)}
+.amt{font:600 19px/1 var(--cond);font-variant-numeric:tabular-nums;white-space:nowrap}
+.amt.plus{color:var(--plus)}
+.amt.due{color:var(--red)}
+.rowbtn{all:unset;box-sizing:border-box;display:flex;align-items:center;gap:12px;width:100%;cursor:pointer}
+.rowbtn:focus-visible{outline:3px solid var(--amber);outline-offset:4px;border-radius:6px}
+.list > li.req{flex-direction:column;align-items:stretch;gap:0}
+.list > li.req .actions{margin-top:8px}
+.daysep{font-size:13.5px;color:var(--muted);margin:14px 4px 6px}
+.empty{background:var(--surface);border:1px dashed var(--line);border-radius:14px;padding:18px 16px;color:var(--muted)}
+.tag{display:inline-block;font-size:12.5px;font-weight:500;background:var(--green-soft);color:var(--on-soft);border-radius:999px;padding:2px 9px}
+.tag.warn{background:var(--amber);color:var(--amber-ink)}
+
+/* bottoni */
+.btn{border:1px solid var(--line);background:var(--surface);border-radius:12px;padding:10px 14px;font-weight:600;min-height:44px;white-space:nowrap}
+.btn.primary{background:var(--green);border-color:var(--green);color:var(--green-ink)}
+.btn.small{min-height:36px;padding:6px 11px;font-size:14px;border-radius:10px}
+.btn.danger{color:var(--red)}
+.btn.armed{background:var(--red);border-color:var(--red);color:#fff}
+.btn.wide{width:100%}
+.x{border:0;background:none;color:var(--muted);width:40px;height:40px;border-radius:10px;font-size:20px;line-height:1;margin-right:-8px}
+.x.armed{background:var(--red);color:#fff}
+.actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:12px}
+
+/* segmenti */
+.seg{display:flex;gap:6px;overflow-x:auto;margin:0 -16px 14px;padding:2px 16px;scrollbar-width:none}
+.seg::-webkit-scrollbar{display:none}
+.seg button{flex:none;border:1px solid var(--line);background:var(--surface);border-radius:999px;padding:8px 14px;font-weight:500;min-height:40px}
+.seg button.on{background:var(--ink);border-color:var(--ink);color:var(--bg)}
+
+/* bar */
+.tiles{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.tile{background:var(--surface);border:1px solid var(--line);border-radius:16px;padding:12px 14px;text-align:left;min-height:104px;display:flex;flex-direction:column;justify-content:space-between;transition:transform .08s}
+.tile:active{transform:scale(.97);background:var(--green-soft)}
+.tile .n{font-weight:600;line-height:1.2;overflow-wrap:anywhere}
+.tile .p{font:700 34px/1 var(--cond);font-variant-numeric:tabular-nums;margin-top:8px}
+.tile .k{font-size:13px;color:var(--muted)}
+.tile .k.out{color:var(--red)}
+.tile.add{border-style:dashed;background:none;align-items:center;justify-content:center;gap:2px;color:var(--muted);font-weight:600;text-align:center}
+.tile.add .plus{font:600 34px/1 var(--cond)}
+.forwho{display:flex;align-items:center;gap:8px;margin-bottom:12px;font-size:14.5px;color:var(--muted)}
+.forwho select{flex:1;border:1px solid var(--line);background:var(--surface);border-radius:10px;padding:9px 10px;min-height:42px}
+.owe{display:flex;justify-content:space-between;align-items:center;background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:12px 14px;margin-bottom:12px}
+.owe b{font:700 30px/1 var(--cond);font-variant-numeric:tabular-nums}
+.owe.has b{color:var(--red)}
+.stats{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:12px}
+.stats .fact b{font-size:21px}
+
+/* quote */
+.round{background:var(--surface);border:1px solid var(--line);border-radius:14px;margin-bottom:10px;overflow:hidden}
+.round-h{all:unset;box-sizing:border-box;width:100%;cursor:pointer;display:flex;justify-content:space-between;align-items:center;gap:12px;padding:13px 14px}
+.round-h:focus-visible{outline:3px solid var(--amber);outline-offset:-3px}
+.round-h .t{font-weight:600}
+.bar{height:6px;background:var(--green-soft);border-radius:3px;margin:0 14px 12px;overflow:hidden}
+.bar i{display:block;height:100%;background:var(--green);border-radius:3px}
+@media (prefers-color-scheme: dark){ .bar i{background:var(--on-soft)} }
+.round .list{border:0;border-top:1px solid var(--line);border-radius:0}
+
+/* moduli e pannello */
+.form{display:flex;flex-direction:column;gap:12px}
+.form label{display:flex;flex-direction:column;gap:5px;font-size:14.5px;font-weight:500}
+.form input,.form select{border:1px solid var(--line);background:var(--surface);border-radius:11px;padding:11px 12px;min-height:46px;font-size:16px;width:100%}
+.two{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.err{color:var(--red);font-size:14.5px;font-weight:500}
+.err:empty{display:none}
+.hint{font-size:14px;color:var(--muted)}
+.hint:empty{display:none}
+.rs,.rs-head{display:grid;grid-template-columns:1fr 74px 92px;gap:8px;align-items:center}
+.rs-head{font-size:13px;color:var(--muted)}
+.rs span{font-weight:500;overflow-wrap:anywhere}
+.total{display:flex;justify-content:space-between;align-items:baseline;border-top:1px solid var(--line);padding-top:10px}
+.total b{font:700 28px/1 var(--cond);font-variant-numeric:tabular-nums}
+
+#sheet{position:fixed;inset:0;z-index:30;display:flex;align-items:flex-end;justify-content:center}
+.backdrop{position:absolute;inset:0;background:rgba(8,16,13,.55)}
+.panel{position:relative;width:100%;max-width:560px;max-height:90dvh;overflow:auto;background:var(--bg);border-radius:22px 22px 0 0;padding:18px 16px calc(20px + env(safe-area-inset-bottom,0px));animation:up .18s ease-out}
+.panel h2{margin:0 44px 4px 2px;font-size:26px}
+.panel .sub{margin:0 2px 14px}
+.panel .closex{position:absolute;right:10px;top:10px;margin:0}
+@keyframes up{from{transform:translateY(24px);opacity:0}to{transform:none;opacity:1}}
+
+/* barra in basso */
+.nav{position:fixed;left:0;right:0;bottom:0;z-index:20;background:var(--surface);border-top:1px solid var(--line);padding-bottom:env(safe-area-inset-bottom,0px)}
+.nav div{max-width:560px;margin:0 auto;display:grid;grid-template-columns:repeat(5,1fr)}
+.nav button{position:relative;border:0;background:none;padding:9px 2px 8px;display:flex;flex-direction:column;align-items:center;gap:3px;font-size:12.5px;font-weight:500;color:var(--muted);min-height:58px}
+.nav button svg{width:24px;height:24px;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
+.nav button.on{color:var(--on-soft);font-weight:600}
+.nav button.on::before{content:"";position:absolute;top:0;left:26%;right:26%;height:3px;background:var(--amber);border-radius:0 0 3px 3px}
+.dot{position:absolute;top:6px;left:calc(50% + 6px);min-width:18px;height:18px;border-radius:9px;background:var(--red);color:#fff;font-size:12px;font-weight:600;line-height:18px;padding:0 5px}
+
+#toast{position:fixed;left:50%;bottom:calc(74px + env(safe-area-inset-bottom,0px));transform:translateX(-50%);z-index:40;background:var(--ink);color:var(--bg);border-radius:12px;padding:10px 12px 10px 14px;display:flex;align-items:center;gap:12px;max-width:calc(100vw - 24px);width:max-content;font-weight:500;box-shadow:0 6px 24px rgba(0,0,0,.25)}
+#toast.bad{background:var(--red);color:#fff}
+#toast.high{bottom:auto;top:calc(12px + env(safe-area-inset-top,0px))}
+#toast button{border:0;background:var(--amber);color:var(--amber-ink);border-radius:8px;padding:6px 10px;font-weight:600}
+
+/* schermate d'ingresso */
+.gate{min-height:100dvh;display:flex;flex-direction:column;justify-content:center;padding:32px 4px}
+.gate h1{font:700 48px/.98 var(--cond);margin-bottom:8px}
+.gate .sub{margin-bottom:22px;font-size:16px}
+.gate .seg{margin-bottom:14px}
+.card{background:var(--surface);border:1px solid var(--line);border-radius:16px;padding:16px}
+@media (prefers-reduced-motion: reduce){ *{animation:none!important;transition:none!important} }
+</style>
+</head>
+<body>
+<div id="root"></div>
+<div id="sheet" hidden></div>
+<div id="toast" role="status" hidden></div>
+
+<script>
+(function(){
+'use strict';
+
+const DEMO = !FIREBASE_CONFIG.apiKey;
+const SDK = 'https://www.gstatic.com/firebasejs/12.18.0/';
+const MAIL_DOMAIN = '@soci.example.com';
+const CAT = {affitto:'Affitto', utenze:'Luce e utenze', bar:'Bar', attrezzatura:'Arredo e attrezzatura', altro:'Altro'};
+
+/* ---------- utilità ---------- */
+const $ = s => document.querySelector(s);
+const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const fmtEur = new Intl.NumberFormat('it-IT',{style:'currency',currency:'EUR'});
+const eur = c => fmtEur.format((c||0)/100);
+const num = c => ((c||0)/100).toLocaleString('it-IT',{minimumFractionDigits:2,maximumFractionDigits:2});
+const sum = (arr, f) => arr.reduce((a,x) => a + f(x), 0);
+const byName = (a,b) => (a.name||'').localeCompare(b.name||'','it');
+function parseEur(v){
+  let s = String(v == null ? '' : v).trim().replace(/[€\s]/g,'');
+  if (!s) return null;
+  if (s.includes(',')) s = s.replace(/\./g,'').replace(',','.');
+  const n = Number(s);
+  return (isFinite(n) && n >= 0) ? Math.round(n*100) : null;
+}
+function isoDay(d){ d = d || new Date(); return new Date(d.getTime() - d.getTimezoneOffset()*60000).toISOString().slice(0,10); }
+const dayShort = ts => new Date(ts).toLocaleDateString('it-IT',{day:'numeric',month:'short'});
+const dayLong = ts => new Date(ts).toLocaleDateString('it-IT',{weekday:'long',day:'numeric',month:'long'});
+const hour = ts => new Date(ts).toLocaleTimeString('it-IT',{hour:'2-digit',minute:'2-digit'});
+const monthLabel = ym => { const s = new Date(ym+'-15T12:00:00').toLocaleDateString('it-IT',{month:'long',year:'numeric'}); return s.charAt(0).toUpperCase()+s.slice(1); };
+const dateTs = iso => { const t = Date.parse(iso+'T12:00:00'); return isNaN(t) ? 0 : t; };
+const slug = name => name.trim().toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/[^a-z0-9]+/g,'.').replace(/^\.+|\.+$/g,'');
+
+/* ---------- stato ---------- */
+const S = {
+  screenErr:null, user:null, me:null, meLoaded:false, registering:false,
+  members:[], products:[], rounds:[], expenses:[], settlements:[], purchases:[], config:null,
+  loaded:{}, tab:'cassa', bar:'prendi', buyFor:null, openRound:undefined, sheet:null
+};
+let DB, AUTH, unsubMe = null, unsubs = [], dataOn = false, curScreen = null, renderQueued = false, toastTimer = null, toastUndo = null;
+
+/* ---------- archivio di prova (solo su questo dispositivo) ---------- */
+function seed(){
+  const now = Date.now(), D = 86400000;
+  const m = (name, role, approved, days) => ({name, role:role||'member', approved:approved !== false, createdAt: now - (days||40)*D});
+  const paid = {}; ['u1','u2','u3','u4','u5'].forEach((u,i) => paid[u] = now - (38-i)*D);
+  const buy = (id, uid, name, pid, pname, price, cost, ago) => [id, {uid, name, pid, pname, price, cost, qty:1, ts: now - ago, settled:false, by:uid}];
+  const H = 3600000;
+  return {
+    config:{main:{founder:'u1', clubName:'Il nostro locale'}},
+    members:{u1:m('Antonio','admin'), u2:m('Marco'), u3:m('Luca'), u4:m('Giuseppe'), u5:m('Davide'), u6:m('Francesco'), u7:m('Simone','member',false,1)},
+    rounds:{r1:{name:'Quota di ingresso', amount:15000, ts: now - 40*D, paid}},
+    expenses:{
+      e1:{date:isoDay(new Date(now-36*D)), cat:'affitto', desc:'Affitto, primi 2 mesi', amount:40000, ts:now-36*D},
+      e2:{date:isoDay(new Date(now-33*D)), cat:'utenze', desc:'Allaccio luce', amount:9000, ts:now-33*D},
+      e3:{date:isoDay(new Date(now-30*D)), cat:'bar', desc:'Rifornimento bar: 24 Acqua 0,5 L, 24 Birra 33 cl, 12 Coca-Cola lattina, 40 Caffè, 12 Patatine', amount:4720, ts:now-30*D}
+    },
+    products:{
+      p1:{name:'Acqua 0,5 L', cost:20, price:50, stock:14, active:true, ts:1},
+      p2:{name:'Birra 33 cl', cost:85, price:150, stock:11, active:true, ts:2},
+      p3:{name:'Coca-Cola lattina', cost:55, price:100, stock:7, active:true, ts:3},
+      p4:{name:'Caffè', cost:25, price:60, stock:28, active:true, ts:4},
+      p5:{name:'Patatine', cost:45, price:100, stock:0, active:true, ts:5}
+    },
+    settlements:{
+      s1:{uid:'u2', name:'Marco', amount:950, cost:440, count:9, ts:now-6*D, by:'u1'},
+      s2:{uid:'u3', name:'Luca', amount:600, cost:285, count:6, ts:now-5*D, by:'u1'}
+    },
+    purchases:Object.fromEntries([
+      buy('b1','u1','Antonio','p4','Caffè',60,25, 2*D+3*H),
+      buy('b2','u1','Antonio','p1','Acqua 0,5 L',50,20, 1*D+2*H),
+      buy('b3','u1','Antonio','p2','Birra 33 cl',150,85, 1*D+1*H),
+      buy('b4','u4','Giuseppe','p2','Birra 33 cl',150,85, 2*D),
+      buy('b5','u4','Giuseppe','p2','Birra 33 cl',150,85, 1*D+2*H),
+      buy('b6','u4','Giuseppe','p5','Patatine',100,45, 1*D+2*H),
+      buy('b7','u5','Davide','p3','Coca-Cola lattina',100,55, 3*H),
+      buy('b8','u5','Davide','p1','Acqua 0,5 L',50,20, 2*H),
+      buy('b9','u6','Francesco','p4','Caffè',60,25, 5*H),
+      buy('b10','u2','Marco','p1','Acqua 0,5 L',50,20, 4*H)
+    ])
+  };
+}
+function makeLocalDB(){
+  const KEY = 'locale-prova-v1';
+  let data = null;
+  try { data = JSON.parse(localStorage.getItem(KEY)); } catch(e){}
+  if (!data || !data.members) data = seed();
+  const subs = [];
+  const save = () => { try { localStorage.setItem(KEY, JSON.stringify(data)); } catch(e){} };
+  const rows = c => Object.keys(data[c]||{}).map(id => Object.assign({id}, data[c][id]));
+  const off = f => () => { const i = subs.indexOf(f); if (i >= 0) subs.splice(i,1); };
+  function patch(doc, p){
+    for (const k of Object.keys(p)){
+      const v = p[k], path = k.split('.'); let o = doc;
+      while (path.length > 1){ const s = path.shift(); if (!o[s] || typeof o[s] !== 'object') o[s] = {}; o = o[s]; }
+      if (v && v.__del) delete o[path[0]];
+      else if (v && v.__inc !== undefined) o[path[0]] = (o[path[0]]||0) + v.__inc;
+      else o[path[0]] = v;
+    }
+  }
+  return {
+    inc: n => ({__inc:n}), del: () => ({__del:true}),
+    newId: () => 'x' + Date.now().toString(36) + Math.random().toString(36).slice(2,8),
+    listen(c, w, cb){ const f = () => cb(rows(c).filter(r => !w || r[w[0]] === w[1])); subs.push(f); f(); return off(f); },
+    listenDoc(c, id, cb){ const f = () => { const d = (data[c]||{})[id]; cb(d ? Object.assign({id}, d) : null); }; subs.push(f); f(); return off(f); },
+    getDoc(c, id){ const d = (data[c]||{})[id]; return Promise.resolve(d ? Object.assign({id}, d) : null); },
+    find(c, f, v){ return Promise.resolve(rows(c).filter(r => r[f] === v)); },
+    batch(ops){
+      for (const o of ops){
+        data[o.c] = data[o.c] || {};
+        if (o.t === 'set') data[o.c][o.id] = JSON.parse(JSON.stringify(o.d));
+        else if (o.t === 'update'){ if (data[o.c][o.id]) patch(data[o.c][o.id], o.d); }
+        else delete data[o.c][o.id];
+      }
+      save(); subs.slice().forEach(f => f());
+      return Promise.resolve();
+    },
+    reset(){ data = seed(); save(); subs.slice().forEach(f => f()); }
+  };
+}
+
+/* ---------- archivio vero (Firebase) ---------- */
+function loadScript(src){
+  return new Promise((res, rej) => { const s = document.createElement('script'); s.src = src; s.onload = res; s.onerror = () => rej(new Error('Impossibile caricare ' + src)); document.head.appendChild(s); });
+}
+function makeFirebase(){
+  firebase.initializeApp(FIREBASE_CONFIG);
+  const fdb = firebase.firestore(), fauth = firebase.auth(), FV = firebase.firestore.FieldValue;
+  const row = d => Object.assign({id:d.id}, d.data());
+  DB = {
+    inc: n => FV.increment(n), del: () => FV.delete(),
+    newId: c => fdb.collection(c).doc().id,
+    listen(c, w, cb, err){ let q = fdb.collection(c); if (w) q = q.where(w[0], '==', w[1]); return q.onSnapshot(s => cb(s.docs.map(row)), err); },
+    listenDoc(c, id, cb, err){ return fdb.collection(c).doc(id).onSnapshot(s => cb(s.exists ? row(s) : null), err); },
+    getDoc(c, id){ return fdb.collection(c).doc(id).get().then(s => s.exists ? row(s) : null); },
+    find(c, f, v){ return fdb.collection(c).where(f, '==', v).get().then(s => s.docs.map(row)); },
+    batch(ops){
+      const b = fdb.batch();
+      for (const o of ops){
+        const ref = fdb.collection(o.c).doc(o.id);
+        if (o.t === 'set') b.set(ref, o.d); else if (o.t === 'update') b.update(ref, o.d); else b.delete(ref);
+      }
+      return b.commit();
+    }
+  };
+  AUTH = {
+    onChange(cb){ fauth.onAuthStateChanged(u => cb(u ? {uid:u.uid} : null)); },
+    name(){ const u = fauth.currentUser; return u ? (u.displayName || (u.email||'').split('@')[0]) : ''; },
+    login(name, pin){ return fauth.signInWithEmailAndPassword(slug(name) + MAIL_DOMAIN, pin); },
+    async register(name, pin){ const c = await fauth.createUserWithEmailAndPassword(slug(name) + MAIL_DOMAIN, pin); await c.user.updateProfile({displayName:name}); return c.user.uid; },
+    logout(){ return fauth.signOut(); }
+  };
+}
+function makeDemo(){
+  DB = makeLocalDB();
+  let cb = null;
+  AUTH = {
+    onChange(f){ cb = f; f({uid:'u1'}); },
+    switchTo(uid){ cb({uid}); },
+    name(){ return ''; }, login(){ return Promise.resolve(); }, register(){ return Promise.resolve('u1'); },
+    logout(){ return Promise.resolve(); }
+  };
+}
+
+/* ---------- accesso e ascolto dei dati ---------- */
+function onErr(e){ console.error(e); if (e && e.code === 'permission-denied') return; toast(errText(e), {bad:true}); }
+function stopData(){ unsubs.forEach(u => u()); unsubs = []; dataOn = false; S.loaded = {}; }
+function startData(){
+  if (dataOn) return; dataOn = true;
+  const L = (c, w) => unsubs.push(DB.listen(c, w, rows => { S[c] = rows; S.loaded[c] = true; queueRender(); }, onErr));
+  L('members'); L('products'); L('rounds'); L('expenses'); L('settlements'); L('purchases', ['settled', false]);
+  unsubs.push(DB.listenDoc('config', 'main', c => { S.config = c; queueRender(); }, onErr));
+}
+function onUser(u){
+  if (unsubMe){ unsubMe(); unsubMe = null; }
+  stopData();
+  S.user = u; S.me = null; S.meLoaded = false; S.buyFor = null; S.sheet = null; renderSheet();
+  if (u) unsubMe = DB.listenDoc('members', u.uid, me => {
+    S.me = me; S.meLoaded = true;
+    if (me && me.approved) startData(); else stopData();
+    queueRender();
+  }, onErr);
+  queueRender();
+}
+async function createMembership(uid, name){
+  let cfg = await DB.getDoc('config', 'main'), founder = false;
+  if (cfg) founder = cfg.founder === uid;
+  else {
+    try { await DB.batch([{t:'set', c:'config', id:'main', d:{founder:uid, clubName:'Il nostro locale'}}]); founder = true; }
+    catch(e){ founder = false; }
+  }
+  await DB.batch([{t:'set', c:'members', id:uid, d:{name, role: founder ? 'admin' : 'member', approved: founder, createdAt: Date.now()}}]);
+}
+function errText(e){
+  const c = (e && e.code) || '';
+  if (c === 'auth/email-already-in-use') return 'Questo nome è già usato. Se sei tu, vai su "Entra"; altrimenti aggiungi il cognome.';
+  if (/auth\/(invalid-credential|wrong-password|user-not-found|invalid-login-credentials|invalid-email)/.test(c)) return 'Nome o PIN sbagliati.';
+  if (c === 'auth/weak-password') return 'Il PIN deve avere 6 cifre.';
+  if (c === 'auth/too-many-requests') return 'Troppi tentativi. Riprova tra qualche minuto.';
+  if (c === 'auth/network-request-failed' || c === 'unavailable') return 'Manca la connessione a internet.';
+  if (c === 'auth/operation-not-allowed') return 'In Firebase va attivato l\'accesso con email e password.';
+  if (c === 'permission-denied') return 'Non hai i permessi per farlo.';
+  return 'Non è andata a buon fine. Riprova.';
+}
+
+/* ---------- conti ---------- */
+const isAdmin = () => !!(S.me && S.me.role === 'admin');
+const approved = () => S.members.filter(m => m.approved).sort(byName);
+const pending = () => S.members.filter(m => !m.approved && !m.removed).sort(byName);
+const member = uid => S.members.find(m => m.id === uid);
+const nameOf = (uid, fallback) => (member(uid)||{}).name || fallback || 'Ex socio';
+const activeProducts = () => S.products.filter(p => p.active !== false).sort((a,b) => (a.ts||0) - (b.ts||0));
+const tabOf = uid => S.purchases.filter(p => p.uid === uid).sort((a,b) => b.ts - a.ts);
+const lineTot = p => p.price * (p.qty||1);
+const owed = uid => sum(tabOf(uid), lineTot);
+function totals(){
+  const act = approved();
+  let quote = 0, daVersare = 0;
+  for (const r of S.rounds){
+    const paid = r.paid || {};
+    quote += r.amount * Object.keys(paid).length;
+    daVersare += r.amount * act.filter(m => !paid[m.id]).length;
+  }
+  const bar = sum(S.settlements, s => s.amount), spese = sum(S.expenses, e => e.amount);
+  return {
+    quote, bar, spese, cassa: quote + bar - spese, daVersare,
+    aperti: sum(S.purchases, lineTot),
+    guadagno: sum(S.settlements, s => s.amount - (s.cost||0)),
+    scorte: sum(activeProducts(), p => Math.max(0, p.stock||0) * p.cost)
+  };
+}
+function movements(){
+  const out = [];
+  for (const r of S.rounds) for (const uid of Object.keys(r.paid||{})) out.push({ts:r.paid[uid], amt:r.amount, title:r.name, sub:nameOf(uid)});
+  for (const s of S.settlements) out.push({ts:s.ts, amt:s.amount, title:'Conto del bar', sub:nameOf(s.uid, s.name)});
+  for (const e of S.expenses) out.push({ts:dateTs(e.date) || e.ts, amt:-e.amount, title:e.desc, sub:CAT[e.cat] || 'Altro'});
+  return out.sort((a,b) => b.ts - a.ts);
+}
+
+/* ---------- scritture ---------- */
+function commit(ops){ return DB.batch(ops).catch(e => { console.error(e); toast(errText(e), {bad:true}); }); }
+
+/* ---------- avvisi ---------- */
+function toast(msg, o){
+  o = o || {};
+  const el = $('#toast');
+  clearTimeout(toastTimer); toastUndo = o.undo || null;
+  el.className = (o.bad ? 'bad' : '') + (S.sheet ? ' high' : '');
+  el.innerHTML = '<span>' + esc(msg) + '</span>' + (o.undo ? '<button data-act="undo">Annulla</button>' : '');
+  el.hidden = false;
+  toastTimer = setTimeout(() => { el.hidden = true; toastUndo = null; }, o.undo ? 5500 : 3200);
+}
+
+/* ---------- schermate d'ingresso ---------- */
+const gate = (title, text, buttons) => '<div class="gate"><h1>' + title + '</h1><p class="sub">' + text + '</p><div class="actions">' + (buttons||'') + '</div></div>';
+const SCR = {
+  boot: () => '<div class="gate"><p class="sub">Un attimo…</p></div>',
+  fail: () => gate('Non riesco a collegarmi', esc(S.screenErr || '') + ' Controlla la connessione e ricarica la pagina.', '<button class="btn primary" data-act="reload">Ricarica</button>'),
+  auth: () => `
+    <div class="gate">
+      <h1>Il nostro locale</h1>
+      <p class="sub">Cassa, quote, spese e conti del bar, uguali per tutti.</p>
+      <div class="seg">
+        <button type="button" class="on" data-act="authmode" data-mode="login">Entra</button>
+        <button type="button" data-act="authmode" data-mode="register">È la prima volta</button>
+      </div>
+      <form class="card form" data-form="auth" data-mode="login">
+        <label>Nome<input name="name" required minlength="2" maxlength="30" autocomplete="username" autocapitalize="words" placeholder="Es. Marco R."></label>
+        <label>PIN di 6 cifre<input name="pin" type="password" inputmode="numeric" pattern="[0-9]{6}" maxlength="6" required autocomplete="current-password"></label>
+        <p class="hint" id="authhint"></p>
+        <p class="err" role="alert"></p>
+        <button class="btn primary wide" id="authbtn">Entra</button>
+      </form>
+    </div>`,
+  waiting: () => gate('Richiesta inviata', 'Ciao ' + esc(S.me.name) + '. Appena un admin ti approva, questa pagina si apre da sola.', '<button class="btn" data-act="logout">Esci</button>'),
+  removed: () => gate('Accesso tolto', 'Il tuo accesso al locale è stato tolto. Parlane con un admin.', '<button class="btn" data-act="logout">Esci</button>'),
+  nomember: () => gate('Accesso non attivo', 'Per entrare serve l\'approvazione di un admin.', '<button class="btn primary" data-act="request">Chiedi di entrare</button><button class="btn" data-act="logout">Esci</button>')
+};
+function screenName(){
+  if (S.screenErr) return 'fail';
+  if (!AUTH) return 'boot';
+  if (!S.user) return S.user === null && S.authReady ? 'auth' : 'boot';
+  if (!S.meLoaded || S.registering) return 'boot';
+  if (!S.me) return 'nomember';
+  if (!S.me.approved) return S.me.removed ? 'removed' : 'waiting';
+  return 'app';
+}
+
+/* ---------- pagine ---------- */
+const ICON = {
+  cassa:'<svg viewBox="0 0 24 24"><rect x="3" y="6" width="18" height="13" rx="2.5"/><path d="M3 10h18M16 15h2"/></svg>',
+  bar:'<svg viewBox="0 0 24 24"><path d="M9 2h6v4l2 3v11a2 2 0 0 1-2 2H9a2 2 0 0 1-2-2V9l2-3z"/><path d="M7 13h10"/></svg>',
+  quote:'<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M15.5 8.5a4.2 4.2 0 1 0 0 7M7.5 11h5M7.5 13.5h5"/></svg>',
+  spese:'<svg viewBox="0 0 24 24"><path d="M6 3h12v18l-3-2-3 2-3-2-3 2z"/><path d="M9 8h6M9 12h6"/></svg>',
+  soci:'<svg viewBox="0 0 24 24"><circle cx="9" cy="8" r="3.5"/><path d="M2.5 20a6.5 6.5 0 0 1 13 0M16 4.8a3.5 3.5 0 0 1 0 6.4M18 14.5a6.5 6.5 0 0 1 3.5 5.5"/></svg>'
+};
+const TABS = [['cassa','Cassa'],['bar','Bar'],['quote','Quote'],['spese','Spese'],['soci','Soci']];
+function nav(){
+  const pend = isAdmin() ? pending().length : 0;
+  return '<nav class="nav"><div>' + TABS.map(t =>
+    `<button data-act="go" data-tab="${t[0]}" class="${S.tab === t[0] ? 'on' : ''}" ${S.tab === t[0] ? 'aria-current="page"' : ''}>${ICON[t[0]]}<span>${t[1]}</span>${t[0] === 'soci' && pend ? `<i class="dot">${pend}</i>` : ''}</button>`
+  ).join('') + '</div></nav>';
+}
+function demoBar(){
+  if (!DEMO) return '';
+  return `<div class="demo"><span>Versione di prova: i dati non sono ancora condivisi.</span>
+    <label>Prova come <select data-change="demouser">${approved().map(m => `<option value="${m.id}" ${m.id === S.user.uid ? 'selected' : ''}>${esc(m.name)}${m.role === 'admin' ? ' (admin)' : ''}</option>`).join('')}</select></label></div>`;
+}
+const V = {};
+
+V.cassa = () => {
+  const t = totals(), mine = owed(S.user.uid), mov = movements().slice(0, 30);
+  return `
+  <section class="till" aria-label="Cassa">
+    <p class="till-label">In cassa</p>
+    <p class="till-num">${eur(t.cassa)}</p>
+    <dl class="sum">
+      <div><dt>Quote versate</dt><dd>+ ${num(t.quote)}</dd></div>
+      <div><dt>Incassi del bar</dt><dd>+ ${num(t.bar)}</dd></div>
+      <div><dt>Spese</dt><dd>− ${num(t.spese)}</dd></div>
+    </dl>
+  </section>
+  <div class="facts">
+    <button class="fact" data-act="go" data-tab="bar" data-bar="conti"><span>Conti del bar da incassare</span><b>${eur(t.aperti)}</b></button>
+    <button class="fact" data-act="go" data-tab="quote"><span>Quote ancora da versare</span><b>${eur(t.daVersare)}</b></button>
+  </div>
+  ${mine > 0 ? `<button class="mine" data-act="go" data-tab="bar" data-bar="mio"><span>Il tuo conto al bar</span><b>${eur(mine)}</b></button>` : ''}
+  <h2>Ultimi movimenti</h2>
+  ${mov.length ? '<ul class="list">' + mov.map(m => `
+    <li><div class="grow"><div class="t">${esc(m.title)}</div><div class="s">${dayShort(m.ts)}, ${esc(m.sub)}</div></div>
+    <span class="amt ${m.amt > 0 ? 'plus' : ''}">${m.amt > 0 ? '+' : '−'} ${num(Math.abs(m.amt))}</span></li>`).join('') + '</ul>'
+  : `<p class="empty">Ancora nessun movimento. ${isAdmin() ? 'Parti dalla pagina Quote: crea la quota di ingresso e segna chi l\'ha versata.' : 'Compariranno qui quote, spese e incassi del bar.'}</p>`}`;
+};
+
+const purchaseRow = (p, canDel) => `
+  <li><div class="grow"><div class="t">${esc(p.pname)}</div><div class="s">${hour(p.ts)}</div></div>
+  <span class="amt">${num(lineTot(p))}</span>
+  ${canDel ? `<button class="x" data-act="unbuy" data-id="${p.id}" data-confirm="✓" aria-label="Togli ${esc(p.pname)} dal conto">×</button>` : ''}</li>`;
+function purchaseList(items, canDel){
+  let out = '', day = '';
+  for (const p of items){
+    const d = isoDay(new Date(p.ts));
+    if (d !== day){ out += (day ? '</ul>' : '') + `<p class="daysep">${dayLong(p.ts)}</p><ul class="list">`; day = d; }
+    out += purchaseRow(p, canDel);
+  }
+  return out + (day ? '</ul>' : '');
+}
+
+V.bar = () => {
+  const segs = [['prendi','Prendi'],['mio','Il mio conto'],['conti','Conti'],['listino','Listino']];
+  const head = '<div class="pagehead"><h1>Bar</h1></div><div class="seg">' + segs.map(s => `<button data-act="bar" data-bar="${s[0]}" class="${S.bar === s[0] ? 'on' : ''}">${s[1]}</button>`).join('') + '</div>';
+  return head + BAR[S.bar]();
+};
+const BAR = {};
+BAR.prendi = () => {
+  const ps = activeProducts(), who = (isAdmin() && S.buyFor) || S.user.uid, tot = owed(who);
+  if (!ps.length) return `<p class="empty">Il listino è vuoto. ${isAdmin() ? 'Aggiungi il primo prodotto: nome, quanto lo pagate e a quanto lo vendete.' : 'Un admin deve ancora aggiungere i prodotti.'}</p>${isAdmin() ? '<div class="actions"><button class="btn primary" data-act="sheet" data-sheet="product">Nuovo prodotto</button></div>' : ''}`;
+  return `
+  ${isAdmin() ? `<label class="forwho">Segna per <select data-change="buyfor">${approved().map(m => `<option value="${m.id}" ${m.id === who ? 'selected' : ''}>${m.id === S.user.uid ? 'me' : esc(m.name)}</option>`).join('')}</select></label>` : ''}
+  <div class="owe ${tot > 0 ? 'has' : ''}"><span>${who === S.user.uid ? 'Il tuo conto finora' : 'Conto di ' + esc(nameOf(who))}</span><b>${eur(tot)}</b></div>
+  <div class="tiles">${ps.map(p => {
+    const st = p.stock || 0;
+    return `<button class="tile" data-act="buy" data-id="${p.id}"><span class="n">${esc(p.name)}</span><span><span class="p">${num(p.price)} €</span><br><span class="k ${st <= 0 ? 'out' : ''}">${st > 0 ? (st === 1 ? 'ne resta 1' : 'ne restano ' + st) : 'scorta finita?'}</span></span></button>`;
+  }).join('')}${isAdmin() ? '<button class="tile add" data-act="sheet" data-sheet="product"><span class="plus">+</span><span>Nuovo prodotto</span></button>' : ''}</div>
+  <p class="hint" style="margin-top:12px">Tocca quello che prendi: finisce sul conto e lo paghi a fine mese.</p>`;
+};
+BAR.mio = () => {
+  const items = tabOf(S.user.uid), tot = owed(S.user.uid);
+  const paid = S.settlements.filter(s => s.uid === S.user.uid).sort((a,b) => b.ts - a.ts);
+  return `
+  <div class="owe ${tot > 0 ? 'has' : ''}"><span>Da pagare</span><b>${eur(tot)}</b></div>
+  ${items.length ? purchaseList(items, true) : '<p class="empty">Non hai niente da pagare.</p>'}
+  ${paid.length ? '<h2>Pagamenti fatti</h2><ul class="list">' + paid.map(s => `<li><div class="grow"><div class="t">${dayShort(s.ts)}</div><div class="s">${s.count} ${s.count === 1 ? 'consumazione' : 'consumazioni'}</div></div><span class="amt">${num(s.amount)}</span></li>`).join('') + '</ul>' : ''}`;
+};
+BAR.conti = () => {
+  const t = totals();
+  const rows = approved().map(m => ({m, tot: owed(m.id), n: tabOf(m.id).length})).sort((a,b) => b.tot - a.tot);
+  const last = [...S.settlements].sort((a,b) => b.ts - a.ts).slice(0, 12);
+  return `
+  <div class="stats">
+    <div class="fact"><span>Da incassare</span><b>${eur(t.aperti)}</b></div>
+    <div class="fact"><span>Guadagno finora</span><b>${eur(t.guadagno)}</b></div>
+    <div class="fact"><span>Scorte, al costo</span><b>${eur(t.scorte)}</b></div>
+  </div>
+  <ul class="list">${rows.map(r => `
+    <li><button class="rowbtn" data-act="sheet" data-sheet="tab" data-arg="${r.m.id}">
+      <div class="grow"><div class="t">${esc(r.m.name)}</div><div class="s">${r.n ? r.n + (r.n === 1 ? ' consumazione' : ' consumazioni') : 'in pari'}</div></div>
+      <span class="amt ${r.tot > 0 ? 'due' : ''}">${num(r.tot)}</span></button></li>`).join('')}</ul>
+  ${isAdmin() ? '<p class="hint" style="margin-top:10px">Tocca un socio per vedere il conto e segnarlo come pagato.</p>' : ''}
+  ${last.length ? '<h2>Ultimi pagamenti</h2><ul class="list">' + last.map(s => `
+    <li>${isAdmin() ? `<button class="rowbtn" data-act="sheet" data-sheet="settlement" data-arg="${s.id}">` : ''}
+      <div class="grow"><div class="t">${esc(nameOf(s.uid, s.name))}</div><div class="s">${dayShort(s.ts)}</div></div>
+      <span class="amt plus">+ ${num(s.amount)}</span>${isAdmin() ? '</button>' : ''}</li>`).join('') + '</ul>' : ''}`;
+};
+BAR.listino = () => {
+  const all = [...S.products].sort((a,b) => (a.ts||0) - (b.ts||0)), adm = isAdmin();
+  return `
+  ${adm ? '<div class="actions" style="margin:0 0 12px"><button class="btn primary" data-act="sheet" data-sheet="restock">Rifornimento</button><button class="btn" data-act="sheet" data-sheet="product">Nuovo prodotto</button></div>' : ''}
+  ${all.length ? '<ul class="list">' + all.map(p => `
+    <li>${adm ? `<button class="rowbtn" data-act="sheet" data-sheet="product" data-arg="${p.id}">` : ''}
+      <div class="grow"><div class="t">${esc(p.name)} ${p.active === false ? '<span class="tag warn">fuori listino</span>' : ''}</div>
+      <div class="s">Costa ${num(p.cost)}, si vende a ${num(p.price)}. Scorta: ${p.stock || 0}</div></div>
+      <span class="amt plus">+ ${num(p.price - p.cost)}</span>${adm ? '</button>' : ''}</li>`).join('') + '</ul><p class="hint" style="margin-top:10px">A destra il guadagno su ogni pezzo venduto.</p>'
+  : '<p class="empty">Nessun prodotto. Aggiungi il primo con "Nuovo prodotto", poi registra quanti pezzi hai comprato con "Rifornimento".</p>'}`;
+};
+
+V.quote = () => {
+  const t = totals(), act = approved(), adm = isAdmin();
+  const rounds = [...S.rounds].sort((a,b) => b.ts - a.ts);
+  const open = S.openRound === undefined ? (rounds[0] || {}).id : S.openRound;
+  return `
+  <div class="pagehead"><div><h1>Quote</h1><p class="sub">Versate finora ${eur(t.quote)}</p></div>${adm ? '<button class="btn primary" data-act="sheet" data-sheet="round">Nuova quota</button>' : ''}</div>
+  ${rounds.length ? rounds.map(r => {
+    const paid = r.paid || {}, n = act.filter(m => paid[m.id]).length;
+    const ex = Object.keys(paid).filter(uid => !act.some(m => m.id === uid));
+    const isOpen = open === r.id;
+    return `<section class="round">
+      <button class="round-h" data-act="toggleround" data-id="${r.id}" aria-expanded="${isOpen}">
+        <div><div class="t">${esc(r.name)}</div><div class="s sub" style="margin:0">${eur(r.amount)} a testa, ${n} su ${act.length} versate</div></div>
+        <span class="amt">${num(r.amount * Object.keys(paid).length)}</span>
+      </button>
+      <div class="bar"><i style="width:${act.length ? Math.round(n / act.length * 100) : 0}%"></i></div>
+      ${isOpen ? '<ul class="list">' + act.map(m => `
+        <li><div class="grow"><div class="t">${esc(m.name)}</div><div class="s">${paid[m.id] ? 'Versata il ' + dayShort(paid[m.id]) : 'Da versare'}</div></div>
+        ${paid[m.id]
+          ? (adm ? `<button class="btn small" data-act="togglepaid" data-id="${r.id}" data-uid="${m.id}" data-confirm="Togli il versamento">Versata ✓</button>` : '<span class="tag">Versata</span>')
+          : (adm ? `<button class="btn small primary" data-act="togglepaid" data-id="${r.id}" data-uid="${m.id}">Segna versata</button>` : `<span class="amt due">${num(r.amount)}</span>`)}
+        </li>`).join('') + ex.map(uid => `<li><div class="grow"><div class="t">${esc(nameOf(uid))}</div><div class="s">Versata il ${dayShort(paid[uid])}, non è più socio</div></div><span class="tag">Versata</span></li>`).join('') + '</ul>'
+        + (adm ? `<div class="actions" style="margin:10px 14px 12px"><button class="btn small danger" data-act="delround" data-id="${r.id}" data-confirm="Conferma: elimina quota e versamenti">Elimina questa quota</button></div>` : '') : ''}
+    </section>`;
+  }).join('') : `<p class="empty">Nessuna quota. ${adm ? 'Crea la prima con "Nuova quota", per esempio la quota di ingresso da 150 €.' : 'Le quote le crea un admin.'}</p>`}`;
+};
+
+V.spese = () => {
+  const t = totals(), adm = isAdmin();
+  const all = [...S.expenses].sort((a,b) => (b.date||'').localeCompare(a.date||'') || (b.ts||0) - (a.ts||0));
+  let out = '', month = '';
+  for (const e of all){
+    const ym = (e.date||'').slice(0,7);
+    if (ym !== month){
+      out += (month ? '</ul>' : '') + `<h2 style="display:flex;justify-content:space-between"><span>${monthLabel(ym)}</span><span class="num">${eur(sum(all.filter(x => (x.date||'').slice(0,7) === ym), x => x.amount))}</span></h2><ul class="list">`;
+      month = ym;
+    }
+    out += `<li>${adm ? `<button class="rowbtn" data-act="sheet" data-sheet="expense" data-arg="${e.id}">` : ''}
+      <div class="grow"><div class="t">${esc(e.desc)}</div><div class="s">${dayShort(dateTs(e.date))} <span class="tag">${CAT[e.cat] || 'Altro'}</span></div></div>
+      <span class="amt">− ${num(e.amount)}</span>${adm ? '</button>' : ''}</li>`;
+  }
+  return `
+  <div class="pagehead"><div><h1>Spese</h1><p class="sub">Spese in tutto ${eur(t.spese)}</p></div>${adm ? '<button class="btn primary" data-act="sheet" data-sheet="expense">Nuova spesa</button>' : ''}</div>
+  ${all.length ? out + '</ul>' : `<p class="empty">Nessuna spesa. ${adm ? 'Aggiungi affitto, bollette e acquisti con "Nuova spesa". I rifornimenti del bar si registrano dal Listino.' : 'Le spese le registra un admin.'}</p>`}`;
+};
+
+V.soci = () => {
+  const adm = isAdmin(), pend = pending(), act = approved(), ex = S.members.filter(m => m.removed);
+  return `
+  <div class="pagehead"><div><h1>Soci</h1><p class="sub">Sei ${esc(S.me.name)}${adm ? ', admin' : ''}</p></div>${DEMO ? '' : '<button class="btn" data-act="logout" data-confirm="Conferma: esci">Esci</button>'}</div>
+  ${adm && pend.length ? '<h2 style="margin-top:0">Chiedono di entrare</h2><ul class="list">' + pend.map(m => `
+    <li class="req"><div><div class="t">${esc(m.name)}</div><div class="s">Richiesta del ${dayShort(m.createdAt)}</div></div>
+    <div class="actions"><button class="btn small primary" data-act="approve" data-uid="${m.id}">Approva</button>
+    <button class="btn small" data-act="sheet" data-sheet="merge" data-arg="${m.id}">Ha perso il PIN</button>
+    <button class="btn small danger" data-act="reject" data-uid="${m.id}" data-confirm="Conferma: rifiuta">Rifiuta</button></div></li>`).join('') + '</ul><h2>Soci</h2>' : ''}
+  <ul class="list">${act.map(m => `
+    <li>${adm ? `<button class="rowbtn" data-act="sheet" data-sheet="member" data-arg="${m.id}">` : ''}
+      <div class="grow"><div class="t">${esc(m.name)}${m.id === S.user.uid ? ' (tu)' : ''}</div></div>
+      ${m.role === 'admin' ? '<span class="tag">admin</span>' : ''}${adm ? '</button>' : ''}</li>`).join('')}</ul>
+  ${adm ? `<p class="hint" style="margin-top:10px">Gli admin segnano quote, spese e pagamenti del bar. Conviene essere almeno in due.</p>
+    <div class="actions"><button class="btn" data-act="sheet" data-sheet="club">Cambia nome del locale</button>${DEMO ? '<button class="btn danger" data-act="resetdemo" data-confirm="Conferma: ricomincia">Ricomincia la prova</button>' : ''}</div>` : ''}
+  ${adm && ex.length ? '<h2>Ex soci</h2><ul class="list">' + ex.sort(byName).map(m => `<li><div class="grow"><div class="t">${esc(m.name)}</div></div><button class="btn small" data-act="readmit" data-uid="${m.id}">Riammetti</button></li>`).join('') + '</ul>' : ''}`;
+};
+
+/* ---------- pannelli ---------- */
+const closeX = '<button class="x closex" data-act="close" aria-label="Chiudi">×</button>';
+const SH = {};
+SH.expense = id => {
+  const e = id ? S.expenses.find(x => x.id === id) : null;
+  if (id && !e) return closeX + '<h2>Spesa</h2><p class="empty">Questa spesa non c\'è più.</p>';
+  return `${closeX}<h2>${e ? 'Modifica spesa' : 'Nuova spesa'}</h2><p class="sub">Esce dalla cassa appena la salvi.</p>
+  <form class="form" data-form="expense">
+    <input type="hidden" name="id" value="${e ? e.id : ''}">
+    <label>Cosa avete pagato<input name="desc" required maxlength="120" value="${e ? esc(e.desc) : ''}" placeholder="Es. Affitto di novembre"></label>
+    <div class="two">
+      <label>Importo in €<input name="amount" inputmode="decimal" required value="${e ? num(e.amount) : ''}" placeholder="0,00"></label>
+      <label>Data<input type="date" name="date" required value="${e ? e.date : isoDay()}"></label>
+    </div>
+    <label>Tipo<select name="cat">${Object.keys(CAT).map(k => `<option value="${k}" ${e && e.cat === k ? 'selected' : ''}>${CAT[k]}</option>`).join('')}</select></label>
+    <p class="err" role="alert"></p>
+    <button class="btn primary wide">${e ? 'Salva spesa' : 'Aggiungi spesa'}</button>
+    ${e ? `<button type="button" class="btn danger wide" data-act="delexpense" data-id="${e.id}" data-confirm="Conferma: elimina spesa">Elimina spesa</button>` : ''}
+  </form>`;
+};
+SH.round = () => `${closeX}<h2>Nuova quota</h2><p class="sub">Vale per tutti i soci. Poi segni chi l'ha versata.</p>
+  <form class="form" data-form="round">
+    <label>Nome<input name="name" required maxlength="60" value="${S.rounds.length ? '' : 'Quota di ingresso'}" placeholder="Es. Seconda quota"></label>
+    <label>Importo a testa in €<input name="amount" inputmode="decimal" required placeholder="150"></label>
+    <p class="err" role="alert"></p>
+    <button class="btn primary wide">Crea quota</button>
+  </form>`;
+SH.product = id => {
+  const p = id ? S.products.find(x => x.id === id) : null;
+  return `${closeX}<h2>${p ? 'Modifica prodotto' : 'Nuovo prodotto'}</h2><p class="sub">${p ? 'I conti già segnati restano al prezzo di prima.' : 'I pezzi comprati li registri dopo con "Rifornimento".'}</p>
+  <form class="form" data-form="product">
+    <input type="hidden" name="id" value="${p ? p.id : ''}">
+    <label>Nome<input name="name" required maxlength="40" value="${p ? esc(p.name) : ''}" placeholder="Es. Acqua 0,5 L"></label>
+    <div class="two">
+      <label>Lo pagate, in €<input name="cost" inputmode="decimal" required value="${p ? num(p.cost) : ''}" placeholder="0,20"></label>
+      <label>Lo vendete a, in €<input name="price" inputmode="decimal" required value="${p ? num(p.price) : ''}" placeholder="0,50"></label>
+    </div>
+    ${p ? `<label>Pezzi in scorta (correggi se il conto non torna)<input name="stock" inputmode="numeric" value="${p.stock || 0}"></label>` : ''}
+    <p class="err" role="alert"></p>
+    <button class="btn primary wide">${p ? 'Salva prodotto' : 'Aggiungi al listino'}</button>
+    ${p ? `<button type="button" class="btn wide" data-act="toggleproduct" data-id="${p.id}">${p.active === false ? 'Rimetti in listino' : 'Togli dal listino'}</button>` : ''}
+  </form>`;
+};
+SH.restock = () => {
+  const ps = activeProducts();
+  if (!ps.length) return closeX + '<h2>Rifornimento</h2><p class="empty">Prima aggiungi almeno un prodotto al listino.</p>';
+  return `${closeX}<h2>Rifornimento</h2><p class="sub">Scrivi quanti pezzi hai comprato. La scorta sale e la spesa va da sola nella pagina Spese.</p>
+  <form class="form" data-form="restock">
+    <div class="rs-head"><span>Prodotto</span><span>Pezzi</span><span>Costo l'uno</span></div>
+    ${ps.map(p => `<div class="rs"><span>${esc(p.name)}</span>
+      <input name="q_${p.id}" inputmode="numeric" placeholder="0" aria-label="Pezzi di ${esc(p.name)}">
+      <input name="c_${p.id}" inputmode="decimal" value="${num(p.cost)}" aria-label="Costo di un pezzo di ${esc(p.name)}"></div>`).join('')}
+    <label>Data<input type="date" name="date" required value="${isoDay()}"></label>
+    <p class="total"><span>Totale speso</span><b id="rs-total">${eur(0)}</b></p>
+    <p class="err" role="alert"></p>
+    <button class="btn primary wide">Registra rifornimento</button>
+  </form>`;
+};
+SH.tab = uid => {
+  const items = tabOf(uid), tot = owed(uid), adm = isAdmin();
+  return `${closeX}<h2>Conto di ${esc(nameOf(uid))}</h2><p class="sub">${items.length ? 'Da pagare ' + eur(tot) : 'In pari, niente da pagare.'}</p>
+  ${items.length ? purchaseList(items, adm || uid === S.user.uid) : ''}
+  ${adm && items.length ? `<div class="actions"><button class="btn primary wide" data-act="settle" data-uid="${uid}" data-confirm="Conferma: ha pagato ${eur(tot)}">Segna pagato ${eur(tot)}</button></div><p class="hint" style="margin-top:8px">I soldi entrano in cassa e il conto riparte da zero.</p>` : ''}`;
+};
+SH.settlement = id => {
+  const s = S.settlements.find(x => x.id === id);
+  if (!s) return closeX + '<h2>Pagamento</h2><p class="empty">Questo pagamento non c\'è più.</p>';
+  return `${closeX}<h2>Pagamento di ${esc(nameOf(s.uid, s.name))}</h2><p class="sub">${eur(s.amount)} il ${dayShort(s.ts)}, ${s.count} ${s.count === 1 ? 'consumazione' : 'consumazioni'}.</p>
+  <button class="btn danger wide" data-act="unsettle" data-id="${s.id}" data-confirm="Conferma: annulla pagamento">Annulla questo pagamento</button>
+  <p class="hint" style="margin-top:8px">Le consumazioni tornano sul conto da pagare e i soldi escono dalla cassa.</p>`;
+};
+SH.member = uid => {
+  const m = member(uid); if (!m) return closeX + '<h2>Socio</h2>';
+  const admins = approved().filter(x => x.role === 'admin').length, lastAdmin = m.role === 'admin' && admins <= 1, due = owed(uid);
+  return `${closeX}<h2>${esc(m.name)}</h2><p class="sub">${m.role === 'admin' ? 'Admin' : 'Socio'}${due ? ', conto del bar ' + eur(due) : ''}</p>
+  <div class="form">
+    ${m.role === 'admin'
+      ? (lastAdmin ? '<p class="hint">È l\'unico admin: nominane un altro prima di toglierlo.</p>' : `<button class="btn wide" data-act="role" data-uid="${uid}" data-role="member">Togli da admin</button>`)
+      : `<button class="btn wide" data-act="role" data-uid="${uid}" data-role="admin">Nomina admin</button>`}
+    ${lastAdmin ? '' : `<button class="btn danger wide" data-act="remove" data-uid="${uid}" data-confirm="Conferma: togli l'accesso">Togli dal locale</button>`}
+  </div>`;
+};
+SH.merge = uid => {
+  const m = member(uid); if (!m) return closeX + '<h2>Richiesta</h2>';
+  const others = approved().filter(x => x.id !== S.user.uid);
+  return `${closeX}<h2>Ha perso il PIN</h2><p class="sub">Se ${esc(m.name)} è un socio che si è registrato di nuovo, scegli chi era: conto del bar e quote passano al nuovo accesso.</p>
+  <form class="form" data-form="merge">
+    <input type="hidden" name="uid" value="${uid}">
+    <label>Chi era<select name="old" required>${others.map(x => `<option value="${x.id}">${esc(x.name)}</option>`).join('')}</select></label>
+    <p class="err" role="alert"></p>
+    <button class="btn primary wide" ${others.length ? '' : 'disabled'}>Collega al vecchio socio</button>
+  </form>`;
+};
+SH.club = () => `${closeX}<h2>Nome del locale</h2>
+  <form class="form" data-form="club">
+    <label>Nome<input name="name" required maxlength="40" value="${esc((S.config||{}).clubName || '')}"></label>
+    <p class="err" role="alert"></p>
+    <button class="btn primary wide">Salva nome</button>
+  </form>`;
+
+const LIVE = {tab:1, settlement:1, member:1};
+function openSheet(name, arg){ $('#toast').hidden = true; toastUndo = null; S.sheet = {name, arg}; renderSheet(); const f = $('#sheet input:not([type=hidden]), #sheet select'); if (f && !LIVE[name] && window.matchMedia('(min-width: 700px)').matches) f.focus(); }
+function closeSheet(){ S.sheet = null; renderSheet(); }
+function renderSheet(){
+  const el = $('#sheet');
+  if (!S.sheet){ el.hidden = true; el.innerHTML = ''; document.body.style.overflow = ''; return; }
+  el.hidden = false; document.body.style.overflow = 'hidden';
+  el.innerHTML = '<div class="backdrop" data-act="close"></div><div class="panel" role="dialog" aria-modal="true">' + SH[S.sheet.name](S.sheet.arg) + '</div>';
+}
+
+/* ---------- disegno ---------- */
+function queueRender(){ if (renderQueued) return; renderQueued = true; setTimeout(() => { renderQueued = false; render(); }, 0); }
+function render(){
+  const root = $('#root'), scr = screenName();
+  if (scr !== 'app'){
+    if (scr === curScreen && scr === 'auth') return;
+    curScreen = scr; root.innerHTML = SCR[scr](); return;
+  }
+  curScreen = 'app';
+  const ready = S.loaded.members && S.loaded.products && S.loaded.rounds && S.loaded.expenses && S.loaded.settlements && S.loaded.purchases;
+  const club = (S.config || {}).clubName || 'Il nostro locale';
+  document.title = club;
+  root.innerHTML = `<header class="top"><span class="club">${esc(club)}</span><span class="who">${esc(S.me.name)}</span></header>`
+    + demoBar() + '<main>' + (ready ? V[S.tab]() : '<p class="empty">Carico i dati…</p>') + '</main>' + nav();
+  if (S.sheet && LIVE[S.sheet.name]) renderSheet();
+}
+
+/* ---------- azioni ---------- */
+const A = {
+  reload(){ location.reload(); },
+  go(d){ S.tab = d.tab; if (d.bar) S.bar = d.bar; render(); window.scrollTo(0,0); },
+  bar(d){ S.bar = d.bar; render(); },
+  sheet(d){ openSheet(d.sheet, d.arg); },
+  close(){ closeSheet(); },
+  undo(){ const f = toastUndo; $('#toast').hidden = true; toastUndo = null; if (f) f(); },
+  authmode(d){
+    const f = $('form[data-form=auth]'); f.dataset.mode = d.mode;
+    document.querySelectorAll('[data-act=authmode]').forEach(b => b.classList.toggle('on', b.dataset.mode === d.mode));
+    $('#authbtn').textContent = d.mode === 'login' ? 'Entra' : 'Chiedi di entrare';
+    $('#authhint').textContent = d.mode === 'login' ? '' : 'Nome e PIN li scegli tu adesso. Poi un admin ti approva. Il primo che si registra diventa admin.';
+    f.querySelector('[name=pin]').autocomplete = d.mode === 'login' ? 'current-password' : 'new-password';
+    f.querySelector('.err').textContent = '';
+  },
+  logout(){ AUTH.logout(); },
+  async request(){
+    S.registering = true; render();
+    try { await createMembership(S.user.uid, AUTH.name() || 'Nuovo socio'); } catch(e){ toast(errText(e), {bad:true}); }
+    S.registering = false; render();
+  },
+  buy(d){
+    const p = S.products.find(x => x.id === d.id); if (!p) return;
+    const uid = (isAdmin() && S.buyFor) || S.user.uid, id = DB.newId('purchases');
+    commit([
+      {t:'set', c:'purchases', id, d:{uid, name:nameOf(uid), pid:p.id, pname:p.name, price:p.price, cost:p.cost, qty:1, ts:Date.now(), settled:false, by:S.user.uid}},
+      {t:'update', c:'products', id:p.id, d:{stock:DB.inc(-1)}}
+    ]);
+    toast('Segnato: ' + p.name + ', ' + eur(p.price) + (uid !== S.user.uid ? ' a ' + nameOf(uid) : ''), {undo: () => removePurchase(id)});
+  },
+  unbuy(d){ removePurchase(d.id); },
+  settle(d){
+    const items = tabOf(d.uid).slice(-450); if (!items.length) return;
+    const sid = DB.newId('settlements'), amount = sum(items, lineTot);
+    const ops = items.map(p => ({t:'update', c:'purchases', id:p.id, d:{settled:true, sid}}));
+    ops.push({t:'set', c:'settlements', id:sid, d:{uid:d.uid, name:nameOf(d.uid), amount, cost:sum(items, p => p.cost * (p.qty||1)), count:items.length, ts:Date.now(), by:S.user.uid}});
+    commit(ops); closeSheet(); toast('Pagato: ' + eur(amount) + ' da ' + nameOf(d.uid));
+  },
+  async unsettle(d){
+    closeSheet();
+    try {
+      const items = await DB.find('purchases', 'sid', d.id);
+      const ops = items.slice(0, 450).map(p => ({t:'update', c:'purchases', id:p.id, d:{settled:false, sid:DB.del()}}));
+      ops.push({t:'delete', c:'settlements', id:d.id});
+      await DB.batch(ops); toast('Pagamento annullato');
+    } catch(e){ console.error(e); toast(errText(e), {bad:true}); }
+  },
+  toggleround(d){ const rounds = [...S.rounds].sort((a,b) => b.ts - a.ts); const cur = S.openRound === undefined ? (rounds[0]||{}).id : S.openRound; S.openRound = cur === d.id ? null : d.id; render(); },
+  togglepaid(d){
+    const r = S.rounds.find(x => x.id === d.id); if (!r) return;
+    const was = !!(r.paid && r.paid[d.uid]);
+    commit([{t:'update', c:'rounds', id:r.id, d:{['paid.' + d.uid]: was ? DB.del() : Date.now()}}]);
+    toast(was ? 'Versamento tolto a ' + nameOf(d.uid) : 'Versata: ' + eur(r.amount) + ' da ' + nameOf(d.uid));
+  },
+  delround(d){ commit([{t:'delete', c:'rounds', id:d.id}]); S.openRound = undefined; toast('Quota eliminata'); },
+  delexpense(d){ commit([{t:'delete', c:'expenses', id:d.id}]); closeSheet(); toast('Spesa eliminata'); },
+  toggleproduct(d){ const p = S.products.find(x => x.id === d.id); if (!p) return; commit([{t:'update', c:'products', id:p.id, d:{active: p.active === false}}]); closeSheet(); toast(p.active === false ? 'Rimesso in listino' : 'Tolto dal listino'); },
+  approve(d){ commit([{t:'update', c:'members', id:d.uid, d:{approved:true, removed:false}}]); toast('Approvato: ' + nameOf(d.uid)); },
+  reject(d){ commit([{t:'delete', c:'members', id:d.uid}]); toast('Richiesta rifiutata'); },
+  readmit(d){ commit([{t:'update', c:'members', id:d.uid, d:{approved:true, removed:false}}]); toast('Riammesso: ' + nameOf(d.uid)); },
+  role(d){ commit([{t:'update', c:'members', id:d.uid, d:{role:d.role}}]); closeSheet(); toast(d.role === 'admin' ? nameOf(d.uid) + ' ora è admin' : nameOf(d.uid) + ' non è più admin'); },
+  remove(d){ const n = nameOf(d.uid); commit([{t:'update', c:'members', id:d.uid, d:{approved:false, removed:true, role:'member'}}]); closeSheet(); toast('Tolto dal locale: ' + n); },
+  resetdemo(){ DB.reset(); S.tab = 'cassa'; AUTH.switchTo('u1'); toast('Prova ricominciata'); }
+};
+function removePurchase(id){
+  const p = S.purchases.find(x => x.id === id); if (!p) return;
+  commit([{t:'delete', c:'purchases', id}, {t:'update', c:'products', id:p.pid, d:{stock:DB.inc(p.qty||1)}}]);
+  toast('Tolto dal conto: ' + p.pname);
+}
+
+/* ---------- moduli ---------- */
+const ferr = (f, msg) => { f.querySelector('.err').textContent = msg; };
+const F = {
+  async auth(d, f){
+    const name = d.name.trim(), pin = d.pin, btn = $('#authbtn');
+    if (slug(name).length < 2) return ferr(f, 'Scrivi il tuo nome, almeno 2 lettere.');
+    if (!/^[0-9]{6}$/.test(pin)) return ferr(f, 'Il PIN deve avere 6 cifre.');
+    ferr(f, ''); btn.disabled = true;
+    try {
+      if (f.dataset.mode === 'login') await AUTH.login(name, pin);
+      else {
+        S.registering = true;
+        try { const uid = await AUTH.register(name, pin); await createMembership(uid, name); }
+        finally { S.registering = false; queueRender(); }
+      }
+    } catch(e){ console.error(e); if ($('#authbtn')){ ferr(f, errText(e)); } else toast(errText(e), {bad:true}); }
+    if ($('#authbtn')) $('#authbtn').disabled = false;
+  },
+  expense(d, f){
+    const amount = parseEur(d.amount), desc = d.desc.trim();
+    if (!desc) return ferr(f, 'Scrivi cosa avete pagato.');
+    if (!amount) return ferr(f, 'Scrivi l\'importo, per esempio 120 oppure 37,50.');
+    if (!d.date) return ferr(f, 'Scegli la data.');
+    const data = {desc, amount, date:d.date, cat:d.cat};
+    if (d.id) commit([{t:'update', c:'expenses', id:d.id, d:data}]);
+    else commit([{t:'set', c:'expenses', id:DB.newId('expenses'), d:Object.assign(data, {ts:Date.now(), by:S.user.uid})}]);
+    closeSheet(); toast(d.id ? 'Spesa salvata' : 'Spesa aggiunta: ' + eur(amount));
+  },
+  round(d, f){
+    const amount = parseEur(d.amount), name = d.name.trim();
+    if (!name) return ferr(f, 'Dai un nome alla quota.');
+    if (!amount) return ferr(f, 'Scrivi l\'importo a testa, per esempio 150.');
+    const id = DB.newId('rounds');
+    commit([{t:'set', c:'rounds', id, d:{name, amount, ts:Date.now(), paid:{}, by:S.user.uid}}]);
+    S.openRound = id; closeSheet(); toast('Quota creata: ' + name);
+  },
+  product(d, f){
+    const name = d.name.trim(), cost = parseEur(d.cost), price = parseEur(d.price);
+    if (!name) return ferr(f, 'Scrivi il nome del prodotto.');
+    if (cost == null || price == null) return ferr(f, 'Scrivi costo e prezzo, per esempio 0,20 e 0,50.');
+    if (d.id){
+      const patch = {name, cost, price};
+      if (d.stock !== undefined && String(d.stock).trim() !== ''){ const n = parseInt(d.stock, 10); if (isNaN(n)) return ferr(f, 'La scorta deve essere un numero.'); patch.stock = n; }
+      commit([{t:'update', c:'products', id:d.id, d:patch}]);
+    } else commit([{t:'set', c:'products', id:DB.newId('products'), d:{name, cost, price, stock:0, active:true, ts:Date.now()}}]);
+    closeSheet(); toast(d.id ? 'Prodotto salvato' : 'Aggiunto al listino: ' + name);
+  },
+  restock(d, f){
+    const r = readRestock(d);
+    if (r.bad) return ferr(f, 'Controlla pezzi e costo di ' + r.bad + '.');
+    if (!r.lines.length) return ferr(f, 'Scrivi almeno un prodotto con i pezzi comprati.');
+    if (!d.date) return ferr(f, 'Scegli la data.');
+    const ops = r.lines.map(l => ({t:'update', c:'products', id:l.p.id, d:{stock:DB.inc(l.q), cost:l.c}}));
+    ops.push({t:'set', c:'expenses', id:DB.newId('expenses'), d:{desc:'Rifornimento bar: ' + r.lines.map(l => l.q + ' ' + l.p.name).join(', '), amount:r.total, date:d.date, cat:'bar', ts:Date.now(), by:S.user.uid}});
+    commit(ops); closeSheet(); toast('Rifornimento registrato: ' + eur(r.total));
+  },
+  merge(d, f){
+    const neu = member(d.uid), old = member(d.old);
+    if (!neu || !old) return ferr(f, 'Scegli il vecchio socio.');
+    const ops = tabOf(old.id).slice(0, 400).map(p => ({t:'update', c:'purchases', id:p.id, d:{uid:neu.id, name:neu.name}}));
+    for (const r of S.rounds) if (r.paid && r.paid[old.id]) ops.push({t:'update', c:'rounds', id:r.id, d:{['paid.' + neu.id]: r.paid[old.id], ['paid.' + old.id]: DB.del()}});
+    ops.push({t:'update', c:'members', id:neu.id, d:{approved:true, removed:false, role:old.role}});
+    ops.push({t:'delete', c:'members', id:old.id});
+    commit(ops); closeSheet(); toast('Collegato: ' + neu.name + ' prende il posto di ' + old.name);
+  },
+  club(d, f){
+    const name = d.name.trim(); if (!name) return ferr(f, 'Scrivi il nome.');
+    commit([{t:'update', c:'config', id:'main', d:{clubName:name}}]); closeSheet(); toast('Nome salvato');
+  }
+};
+function readRestock(d){
+  const lines = []; let total = 0, bad = null;
+  for (const p of activeProducts()){
+    const qs = String(d['q_' + p.id] || '').trim(); if (!qs) continue;
+    const q = Number(qs), c = parseEur(d['c_' + p.id]);
+    if (!Number.isInteger(q) || q < 0 || c == null){ bad = p.name; break; }
+    if (q === 0) continue;
+    lines.push({p, q, c}); total += q * c;
+  }
+  return {lines, total, bad};
+}
+
+/* ---------- eventi ---------- */
+document.addEventListener('click', e => {
+  const el = e.target.closest('[data-act]'); if (!el) return;
+  const act = A[el.dataset.act]; if (!act) return;
+  if (el.dataset.confirm !== undefined && !el.dataset.armed){
+    el.dataset.armed = '1'; el.dataset.label = el.innerHTML; el.textContent = el.dataset.confirm; el.classList.add('armed');
+    setTimeout(() => { if (el.isConnected && el.dataset.armed){ delete el.dataset.armed; el.innerHTML = el.dataset.label; el.classList.remove('armed'); } }, 3500);
+    return;
+  }
+  act(el.dataset, el);
+});
+document.addEventListener('submit', e => {
+  const f = e.target.closest('form[data-form]'); if (!f) return;
+  e.preventDefault();
+  F[f.dataset.form](Object.fromEntries(new FormData(f)), f);
+});
+document.addEventListener('change', e => {
+  const el = e.target.closest('[data-change]'); if (!el) return;
+  if (el.dataset.change === 'buyfor'){ S.buyFor = el.value === S.user.uid ? null : el.value; render(); }
+  if (el.dataset.change === 'demouser'){ AUTH.switchTo(el.value); }
+});
+document.addEventListener('input', e => {
+  const f = e.target.closest('form[data-form=restock]'); if (!f) return;
+  $('#rs-total').textContent = eur(readRestock(Object.fromEntries(new FormData(f))).total);
+});
+document.addEventListener('keydown', e => { if (e.key === 'Escape' && S.sheet) closeSheet(); });
+
+/* ---------- avvio ---------- */
+async function boot(){
+  render();
+  try {
+    if (DEMO) makeDemo();
+    else {
+      await loadScript(SDK + 'firebase-app-compat.js');
+      await Promise.all([loadScript(SDK + 'firebase-auth-compat.js'), loadScript(SDK + 'firebase-firestore-compat.js')]);
+      makeFirebase();
+    }
+    AUTH.onChange(u => { S.authReady = true; onUser(u); });
+  } catch(e){ console.error(e); S.screenErr = 'L\'app non è partita.'; render(); }
+}
+boot();
+})();
+</script>
+</body>
+</html>
